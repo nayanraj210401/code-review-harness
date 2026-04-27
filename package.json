@@ -1,0 +1,50 @@
+{
+  "name": "review-harness",
+  "version": "0.1.0",
+  "description": "An open-source multi-agent code review harness CLI",
+  "keywords": ["code-review", "ai", "cli", "agents", "openrouter"],
+  "license": "MIT",
+  "bin": {
+    "crh": "./bin/crh.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "bin",
+    "src/agents/builtins",
+    "src/skills/builtins"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json && npm run copy-assets",
+    "copy-assets": "cp -r src/agents/builtins dist/agents/builtins && cp -r src/skills/builtins dist/skills/builtins",
+    "dev": "ts-node src/cli/index.ts",
+    "lint": "eslint src --ext .ts",
+    "test": "jest",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "axios": "^1.7.9",
+    "better-sqlite3": "^11.7.0",
+    "chalk": "^5.3.0",
+    "commander": "^12.1.0",
+    "gray-matter": "^4.0.3",
+    "inquirer": "^12.3.2",
+    "nanoid": "^5.0.9",
+    "ora": "^8.1.1",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/inquirer": "^9.0.7",
+    "@types/jest": "^29.5.14",
+    "@types/node": "^22.10.7",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.2.5",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.7.3"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
