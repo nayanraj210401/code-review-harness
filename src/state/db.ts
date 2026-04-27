@@ -24,24 +24,13 @@ export function getDb(dbPath: string): Database.Database {
 function applySchema(db: Database.Database): void {
   const schemaPath = join(__dirname, "schema.sql");
   const schema = readFileSync(schemaPath, "utf8");
-
-  // Split by semicolons but keep CREATE VIRTUAL TABLE and TRIGGER intact
-  const statements = schema
-    .split(/;\s*\n/)
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0);
-
-  const applyStmt = db.transaction(() => {
-    for (const stmt of statements) {
-      try {
-        db.exec(stmt);
-      } catch {
-        // Ignore "already exists" errors from IF NOT EXISTS
-      }
-    }
-  });
-
-  applyStmt();
+  // db.exec handles the full DDL in one shot; IF NOT EXISTS guards each statement
+  try {
+    db.exec(schema);
+  } catch (err) {
+    // Tolerate "already exists" errors on repeated startups
+    if (!String(err).includes("already exists")) throw err;
+  }
 }
 
 export function closeDb(): void {

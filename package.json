@@ -17,7 +17,7 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json && npm run copy-assets",
-    "copy-assets": "cp -r src/agents/builtins dist/agents/builtins && cp -r src/skills/builtins dist/skills/builtins",
+    "copy-assets": "cp -r src/agents/builtins dist/agents/builtins && cp -r src/skills/builtins dist/skills/builtins && cp src/state/schema.sql dist/state/schema.sql",
     "dev": "ts-node src/cli/index.ts",
     "lint": "eslint src --ext .ts",
     "test": "jest",
