@@ -2,7 +2,6 @@ import { existsSync, readdirSync, readFileSync } from "fs";
 import { join } from "path";
 import matter from "gray-matter";
 import type { AgentConfig, ReviewLevel } from "../types/agent";
-import type { IProvider } from "../types/provider";
 import { BaseAgent } from "./base";
 import { logger } from "../utils/logger";
 
@@ -59,11 +58,8 @@ export function listAgentConfigs(): AgentConfig[] {
   return [..._configs.values()];
 }
 
-export function createAgent(
-  config: AgentConfig,
-  provider: IProvider,
-): BaseAgent {
-  return new BaseAgent(config, provider);
+export function createAgent(config: AgentConfig): BaseAgent {
+  return new BaseAgent(config);
 }
 
 export function registerAgentConfig(config: AgentConfig): void {

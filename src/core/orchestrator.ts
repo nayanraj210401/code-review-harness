@@ -9,7 +9,7 @@ import { getDb } from "../state/db";
 import { ReviewSessionRepo } from "../state/repositories/review-session.repo";
 import { FindingRepo } from "../state/repositories/finding.repo";
 import { AgentRunRepo } from "../state/repositories/agent-run.repo";
-import { initProviders, getProvider } from "../providers/registry";
+import { initProviders } from "../providers/registry";
 import { initTools, executeTool } from "../tools/registry";
 import { initAgents, listAgentConfigs, createAgent, registerAgentConfig } from "../agents/registry";
 import { initSkills, getSkillManifests } from "../skills/registry";
@@ -84,8 +84,7 @@ export class Orchestrator extends EventEmitter {
       this.sessionRepo.updateStatus(sessionId, "routing");
       this.emit("routing", session);
 
-      const provider = getProvider(this.config.defaultProvider);
-      const router = new Router(provider, this.config.router.model);
+      const router = new Router(this.config.router.model);
       const agentCatalog = listAgentConfigs();
       const skillCatalog = getSkillManifests();
       const diffSummary = summarizeDiff(diffText);
@@ -225,7 +224,6 @@ export class Orchestrator extends EventEmitter {
     skillCatalog: import("../types/skill").SkillManifest[],
     suggestedSkillIds: string[],
   ): Promise<AgentResult[]> {
-    const provider = getProvider(this.config.defaultProvider);
     const allConfigs = listAgentConfigs();
     const configMap = new Map(allConfigs.map((c) => [c.id, c]));
 
@@ -246,7 +244,7 @@ export class Orchestrator extends EventEmitter {
         const runId = `${sessionId}:${config.id}`;
         this.agentRunRepo.create(runId, sessionId, config.id, config.name, config.model);
 
-        const agent = createAgent(config, provider);
+        const agent = createAgent(config);
         this.emit("agent-start", { agentId: config.id, agentName: config.name });
 
         // Merge router suggestions with agent's own builtinSkills as hints

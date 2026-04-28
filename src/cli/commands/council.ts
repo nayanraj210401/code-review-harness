@@ -1,7 +1,7 @@
 import type { Command } from "commander";
 import { loadConfig } from "../../config/loader";
 import { initFormatters, getFormatter } from "../../formatters/registry";
-import { initProviders, getProvider } from "../../providers/registry";
+import { initProviders } from "../../providers/registry";
 import { initAgents, getAgentConfig } from "../../agents/registry";
 import { initSkills, getSkillManifests } from "../../skills/registry";
 import { loadSkillContent } from "../../skills/loader";
@@ -37,7 +37,6 @@ export function registerCouncilCommand(program: Command): void {
       initAgents(config.agentsDir, process.cwd() + "/.crh/agents");
       initSkills(config.skillsDir);
 
-      const provider = getProvider(config.defaultProvider);
       const chairModel = opts.chairModel ?? config.councilMode.chairModel;
 
       // Resolve agent role
@@ -85,7 +84,6 @@ export function registerCouncilCommand(program: Command): void {
           baseConfig,
           models,
           chairModel,
-          provider,
           agentInput: {
             reviewId: "council",
             level: opts.level,

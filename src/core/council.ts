@@ -1,9 +1,9 @@
 import type { AgentResult, AgentConfig, AgentInput } from "../types/agent";
 import type { CouncilResult, CouncilStage, ConsensusItem } from "../types/council";
-import type { IProvider } from "../types/provider";
 import { generateId } from "../utils/id";
 import { logger } from "../utils/logger";
 import { createAgent } from "../agents/registry";
+import { getProviderForModel } from "../providers/registry";
 
 export interface CouncilRunConfig {
   /** Single agent role — all council members share this system prompt and expertise */
@@ -11,7 +11,6 @@ export interface CouncilRunConfig {
   /** One model per council member — diversity comes from model families, not roles */
   models: string[];
   chairModel: string;
-  provider: IProvider;
   agentInput: AgentInput;
 }
 
@@ -36,7 +35,7 @@ export async function runCouncil(opts: CouncilRunConfig): Promise<CouncilResult>
   const s1Start = Date.now();
   const settled = await Promise.allSettled(
     memberConfigs.map(async (config) => {
-      const agent = createAgent(config, opts.provider);
+      const agent = createAgent(config);
       return agent.run(opts.agentInput);
     }),
   );
@@ -62,7 +61,7 @@ export async function runCouncil(opts: CouncilRunConfig): Promise<CouncilResult>
   // Stage 2: Peer critique — each model critiques the others
   // Because all members share the same expertise, disagreement is meaningful signal
   const s2Start = Date.now();
-  const peerCritiques = await runPeerCritique(stage1Results, opts.provider);
+  const peerCritiques = await runPeerCritique(stage1Results);
 
   stages.push({
     stage: 2,
@@ -75,7 +74,7 @@ export async function runCouncil(opts: CouncilRunConfig): Promise<CouncilResult>
   // Stage 3: Chair synthesis — surfaces findings with cross-model agreement
   const s3Start = Date.now();
   const { consensus, finalSynthesis, aggregateRankings, tokensUsed } =
-    await synthesize(stage1Results, peerCritiques, opts.chairModel, opts.provider);
+    await synthesize(stage1Results, peerCritiques, opts.chairModel);
 
   stages.push({
     stage: 3,
@@ -96,10 +95,7 @@ export async function runCouncil(opts: CouncilRunConfig): Promise<CouncilResult>
   };
 }
 
-async function runPeerCritique(
-  results: AgentResult[],
-  provider: IProvider,
-): Promise<AgentResult[]> {
+async function runPeerCritique(results: AgentResult[]): Promise<AgentResult[]> {
   // Anonymize by model label so each critic can't identify their own review by name
   const labeled = results.map((r, i) => ({
     label: `Model-${String.fromCharCode(65 + i)}`,
@@ -138,7 +134,7 @@ async function runPeerCritique(
         `Return JSON: {"findings": [], "summary": "your critique", "ranking": "Model-B > Model-A"}`;
 
       try {
-        const response = await provider.complete({
+        const response = await getProviderForModel(result.model).complete({
           model: result.model,
           messages: [
             {
@@ -172,7 +168,6 @@ async function synthesize(
   stage1: AgentResult[],
   stage2: AgentResult[],
   chairModel: string,
-  provider: IProvider,
 ): Promise<{
   consensus: ConsensusItem[];
   finalSynthesis: string;
@@ -219,7 +214,7 @@ async function synthesize(
     `}`;
 
   try {
-    const response = await provider.complete({
+    const response = await getProviderForModel(chairModel).complete({
       model: chairModel,
       messages: [
         {
