@@ -26,7 +26,7 @@ export const markdownFormatter: IFormatter = {
     if (session.routerDecision) {
       lines.push(`<details><summary>Router Decision</summary>\n`);
       lines.push(`**Agents selected:** ${session.routerDecision.selectedAgents.join(", ")}`);
-      lines.push(`\n**Skills activated:** ${session.routerDecision.selectedSkills.join(", ") || "none"}`);
+      lines.push(`\n**Suggested skills:** ${(session.routerDecision.suggestedSkills ?? []).join(", ") || "none"}`);
       lines.push(`\n**Rationale:** ${session.routerDecision.rationale}`);
       lines.push(`\n</details>\n`);
     }

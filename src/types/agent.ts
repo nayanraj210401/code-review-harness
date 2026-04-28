@@ -1,5 +1,6 @@
 import type { ModelId } from "./provider";
 import type { ToolResult } from "./tool";
+import type { SkillManifest } from "./skill";
 
 export type ReviewLevel = "quick" | "standard" | "deep";
 
@@ -30,7 +31,12 @@ export interface AgentInput {
   reviewId: string;
   level: ReviewLevel;
   context: AgentContext;
-  selectedSkills?: string[];
+  /** All available skill manifests (metadata only) — agents use this to discover what they can request */
+  skillCatalog?: SkillManifest[];
+  /** Router hints — skill IDs likely relevant, but agent decides whether to load them */
+  suggestedSkillIds?: string[];
+  /** Lazy loader — agent calls this to fetch full skill content on demand */
+  skillLoader?: (id: string) => Promise<string | null>;
   depth?: number;
 }
 

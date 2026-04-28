@@ -2,7 +2,8 @@ import type { AgentConfig, ReviewLevel } from "../types/agent";
 import type { SkillManifest } from "../types/skill";
 import type { RouterDecision } from "../types/review";
 import type { IProvider } from "../types/provider";
-import { truncateToTokens } from "../utils/truncate";
+import type { DiffSummary } from "../tools/diff-summarizer";
+import { formatDiffSummaryForRouter } from "../tools/diff-summarizer";
 import { logger } from "../utils/logger";
 
 const MAX_AGENTS: Record<ReviewLevel, number> = {
@@ -18,25 +19,23 @@ export class Router {
   ) {}
 
   async decide(
-    diff: string,
+    diffSummary: DiffSummary,
     level: ReviewLevel,
     agentCatalog: AgentConfig[],
     skillCatalog: SkillManifest[],
     forceAgentIds?: string[],
     forceSkillIds?: string[],
   ): Promise<RouterDecision> {
-    // If user forced specific agents/skills, skip the router LLM call
     if (forceAgentIds?.length && forceSkillIds?.length) {
       return {
         selectedAgents: forceAgentIds,
-        selectedSkills: forceSkillIds,
+        suggestedSkills: forceSkillIds,
         suggestedTools: ["git-diff", "file-reader"],
         rationale: "User-specified agents and skills (bypassing router)",
       };
     }
 
     const maxAgents = MAX_AGENTS[level];
-    const diffSummary = truncateToTokens(diff, 2000);
 
     const agentList = agentCatalog
       .map((a) => `- ${a.id}: ${a.description} [triggers: ${a.triggers.slice(0, 5).join(", ")}]`)
@@ -46,29 +45,28 @@ export class Router {
       .map((s) => `- ${s.id}: ${s.description} [triggers: ${s.triggers.slice(0, 5).join(", ")}]`)
       .join("\n");
 
-    const systemPrompt = `You are a code review routing agent. Given a git diff and a catalog of expert agents and skills, select the most relevant ones for this review.
+    const systemPrompt = `You are a code review routing agent. Given a structured diff summary and a catalog of expert agents and skills, select the most relevant agents and suggest skills that might be useful.
+
+Agents will receive the full diff. Skills are lazy-loaded — only suggest ones likely relevant based on the diff tokens and languages. Agents will decide at runtime whether to actually load each skill.
 
 Return ONLY valid JSON, no prose, no markdown.`;
 
     const userPrompt = `Review level: ${level} (max ${maxAgents} agents)
 
-Git diff (summary):
-\`\`\`diff
-${diffSummary}
-\`\`\`
+${formatDiffSummaryForRouter(diffSummary)}
 
 Available agents:
 ${agentList}
 
-Available skills:
+Available skills (suggestions only — agents load them at runtime):
 ${skillList}
 
-Select agents and skills most relevant to this diff. For "deep" level you may also synthesize ephemeral agent configs for novel domains not covered above.
+${level === "deep" ? "Deep mode: you may also synthesize ephemeral agent configs for novel domains not covered by the catalog." : ""}
 
 Return JSON exactly:
 {
   "selectedAgents": ["id1", "id2"],
-  "selectedSkills": ["id1", "id2"],
+  "suggestedSkills": ["id1", "id2"],
   "suggestedTools": ["git-diff", "file-reader"],
   "ephemeralAgentConfigs": [],
   "rationale": "brief explanation"
@@ -88,16 +86,16 @@ Return JSON exactly:
       const json = extractJson(response.content);
       const decision = JSON.parse(json) as RouterDecision;
 
-      // Enforce level cap
       if (decision.selectedAgents.length > maxAgents) {
         decision.selectedAgents = decision.selectedAgents.slice(0, maxAgents);
       }
 
-      // Apply forced overrides
       if (forceAgentIds?.length) decision.selectedAgents = forceAgentIds;
-      if (forceSkillIds?.length) decision.selectedSkills = forceSkillIds;
+      if (forceSkillIds?.length) decision.suggestedSkills = forceSkillIds;
 
-      logger.debug(`Router selected: ${decision.selectedAgents.join(", ")} | skills: ${decision.selectedSkills.join(", ")}`);
+      logger.debug(
+        `Router selected: ${decision.selectedAgents.join(", ")} | skill hints: ${(decision.suggestedSkills ?? []).join(", ")}`,
+      );
       return decision;
     } catch (err) {
       logger.warn(`Router failed (${err}), falling back to defaults`);
@@ -107,7 +105,8 @@ Return JSON exactly:
 }
 
 function extractJson(content: string): string {
-  const match = content.match(/```(?:json)?\s*([\s\S]*?)```/) ??
+  const match =
+    content.match(/```(?:json)?\s*([\s\S]*?)```/) ??
     content.match(/(\{[\s\S]*\})/);
   return match ? match[1].trim() : content.trim();
 }
@@ -120,21 +119,23 @@ function fallbackDecision(
   forceSkillIds?: string[],
 ): RouterDecision {
   const maxAgents = MAX_AGENTS[level];
-  const defaultAgentOrder = ["security", "correctness", "performance", "architecture", "testing", "style", "documentation"];
+  const defaultOrder = ["security", "correctness", "performance", "architecture", "testing", "style", "documentation"];
 
-  const selectedAgents = forceAgentIds ??
-    defaultAgentOrder
+  const selectedAgents =
+    forceAgentIds ??
+    defaultOrder
       .filter((id) => agents.some((a) => a.id === id))
       .slice(0, maxAgents);
 
-  const selectedSkills = forceSkillIds ??
+  const suggestedSkills =
+    forceSkillIds ??
     skills
       .filter((s) => ["owasp-top10", "sql-injection", "big-o-analysis"].includes(s.id))
       .map((s) => s.id);
 
   return {
     selectedAgents,
-    selectedSkills,
+    suggestedSkills,
     suggestedTools: ["git-diff", "file-reader"],
     rationale: "Fallback defaults (router unavailable)",
   };

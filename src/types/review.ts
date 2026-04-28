@@ -28,7 +28,8 @@ export interface ReviewRequest {
 
 export interface RouterDecision {
   selectedAgents: string[];
-  selectedSkills: string[];
+  /** Skill IDs the router thinks may be relevant — agents decide at runtime whether to load them */
+  suggestedSkills: string[];
   suggestedTools: string[];
   ephemeralAgentConfigs?: import("./agent").AgentConfig[];
   rationale: string;

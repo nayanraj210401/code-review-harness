@@ -6,6 +6,7 @@ import type {
   Finding,
   IAgent,
 } from "../types/agent";
+import type { SkillManifest } from "../types/skill";
 import type { IProvider, Message } from "../types/provider";
 import type { ToolResult } from "../types/tool";
 import { executeTool } from "../tools/base";
@@ -35,15 +36,16 @@ export class BaseAgent implements IAgent {
   constructor(
     readonly config: AgentConfig,
     private provider: IProvider,
-    private injectedSkillContent: Map<string, string> = new Map(),
   ) {}
 
   async run(input: AgentInput): Promise<AgentResult> {
     const start = Date.now();
     const toolCallsIssued: ToolResult[] = [];
+    // Skills loaded during this run (id → content)
+    const activeSkills = new Map<string, string>();
 
     try {
-      const systemPrompt = this.buildSystemPrompt(input);
+      const systemPrompt = this.buildSystemPrompt(input, activeSkills);
       const userPrompt = this.buildUserPrompt(input);
 
       let messages: Message[] = [
@@ -52,7 +54,7 @@ export class BaseAgent implements IAgent {
       ];
 
       let finalContent = "";
-      const maxRounds = 5;
+      const maxRounds = 8; // extra rounds for skill loading
 
       for (let round = 0; round < maxRounds; round++) {
         const response = await this.provider.complete({
@@ -64,11 +66,72 @@ export class BaseAgent implements IAgent {
 
         finalContent = response.content;
 
-        // Check if agent is requesting a tool call
         const toolCall = extractToolCall(finalContent);
         if (!toolCall) break;
 
-        logger.debug(`[${this.config.id}] tool call: ${toolCall.name}`);
+        logger.debug(`[${this.config.id}] tool: ${toolCall.name}`);
+
+        // ── Runtime skill management ──────────────────────────────────────
+        if (toolCall.name === "request_skill") {
+          const skillId = String(toolCall.input.id ?? "");
+          const loader = input.skillLoader;
+
+          if (!skillId) {
+            pushToolResult(messages, toolCall.name, { error: "Missing skill id" });
+            continue;
+          }
+
+          if (activeSkills.has(skillId)) {
+            pushToolResult(messages, toolCall.name, { alreadyLoaded: true, skillId });
+            continue;
+          }
+
+          const content = loader ? await loader(skillId) : null;
+          if (!content) {
+            pushToolResult(messages, toolCall.name, {
+              error: `Skill "${skillId}" not found. Available: ${(input.skillCatalog ?? []).map((s) => s.id).join(", ")}`,
+            });
+            continue;
+          }
+
+          activeSkills.set(skillId, content);
+          logger.debug(`[${this.config.id}] loaded skill "${skillId}" at runtime`);
+          // Inject skill content as the tool result so the agent can immediately use it
+          messages = [
+            ...messages,
+            { role: "assistant" as const, content: finalContent } as Message,
+            {
+              role: "user" as const,
+              content: `Tool result for request_skill:\nSkill "${skillId}" loaded successfully.\n\n${content}`,
+            } as Message,
+          ];
+          continue;
+        }
+
+        if (toolCall.name === "synthesize_skill") {
+          const { name, instructions } = toolCall.input as {
+            name?: string;
+            instructions?: string;
+          };
+          if (!name || !instructions) {
+            pushToolResult(messages, toolCall.name, { error: "name and instructions are required" });
+            continue;
+          }
+          const ephemeralId = `ephemeral-${name.toLowerCase().replace(/\W+/g, "-")}`;
+          activeSkills.set(ephemeralId, instructions);
+          logger.debug(`[${this.config.id}] synthesized ephemeral skill "${ephemeralId}"`);
+          messages = [
+            ...messages,
+            { role: "assistant" as const, content: finalContent } as Message,
+            {
+              role: "user" as const,
+              content: `Tool result for synthesize_skill:\nCustom skill "${name}" created.\n\n${instructions}`,
+            } as Message,
+          ];
+          continue;
+        }
+
+        // ── Standard tool dispatch ────────────────────────────────────────
         const toolResult = await executeTool(toolCall.name, toolCall.input);
         toolCallsIssued.push(toolResult);
 
@@ -82,10 +145,7 @@ export class BaseAgent implements IAgent {
         ];
       }
 
-      const { findings, summary, tokensUsed } = this.parseResponse(
-        finalContent,
-        input,
-      );
+      const { findings, summary, tokensUsed } = this.parseResponse(finalContent, input);
 
       return {
         agentId: this.config.id,
@@ -113,30 +173,50 @@ export class BaseAgent implements IAgent {
     }
   }
 
-  private buildSystemPrompt(input: AgentInput): string {
+  private buildSystemPrompt(
+    input: AgentInput,
+    activeSkills: Map<string, string>,
+  ): string {
     const parts: string[] = [this.config.systemPrompt];
 
-    // Inject pre-selected skill content (level 2)
-    if (this.injectedSkillContent.size > 0) {
-      parts.push("\n\n---\n## Active Skills\n");
-      for (const [skillId, content] of this.injectedSkillContent) {
-        parts.push(`### Skill: ${skillId}\n${content}`);
-      }
-    }
-
-    // List all other available tools (level 1 metadata only)
-    if (this.config.allowedTools.length > 0) {
+    // Skill catalog — metadata only (level 1). Agent decides what to load.
+    const catalog = input.skillCatalog ?? [];
+    if (catalog.length > 0) {
+      const suggested = new Set(input.suggestedSkillIds ?? []);
+      const rows = catalog.map((s) => {
+        const hint = suggested.has(s.id) ? " ⭐ (router suggests)" : "";
+        return `  - ${s.id}: ${s.description}${hint}`;
+      });
       parts.push(
-        "\n\n---\n## Available Tools\nYou may call these tools by including a JSON block in your response:\n" +
-          "```tool-call\n{\"name\": \"<tool-name>\", \"input\": {...}}\n```\n\n" +
-          "Available: " +
-          this.config.allowedTools.join(", "),
+        "\n\n---\n## Available Skills\n" +
+        "You may load any skill below at runtime using the `request_skill` tool.\n" +
+        "The router has pre-suggested skills marked ⭐ but you are free to request others.\n\n" +
+        rows.join("\n"),
       );
     }
 
+    // Already-active skills are listed (they start empty; content arrives via tool results)
+    if (activeSkills.size > 0) {
+      parts.push("\n\n---\n## Currently Active Skills\n" + [...activeSkills.keys()].join(", "));
+    }
+
+    // Standard context tools
+    const tools = [...this.config.allowedTools, "request_skill", "synthesize_skill"];
     parts.push(
-      '\n\n---\n## Output Format\nYou MUST respond with valid JSON matching this schema:\n```json\n{"findings": [...], "summary": "..."}\n```\n\n' +
-        'Each finding: {"severity": "critical|high|medium|low|info", "category": "string", "title": "string", "description": "string", "suggestion": "string", "filePath"?: "string", "lineStart"?: number, "lineEnd"?: number, "confidence"?: number}',
+      "\n\n---\n## Tools\n" +
+      "Call a tool by including a JSON block in your response:\n" +
+      "```tool-call\n{\"name\": \"<tool>\", \"input\": {...}}\n```\n\n" +
+      "Available tools:\n" +
+      `  - ${this.config.allowedTools.join(", ")} — context gathering\n` +
+      "  - request_skill {id} — load full skill content into your context\n" +
+      "  - synthesize_skill {name, instructions} — create an ephemeral skill checklist for a domain not covered by the catalog",
+    );
+
+    parts.push(
+      '\n\n---\n## Output Format\n' +
+      'When you have finished your review (after loading any needed skills), respond with valid JSON:\n' +
+      '```json\n{"findings": [...], "summary": "..."}\n```\n\n' +
+      'Each finding: {"severity": "critical|high|medium|low|info", "category": "string", "title": "string", "description": "string", "suggestion": "string", "filePath"?: "string", "lineStart"?: number, "lineEnd"?: number, "confidence"?: number, "skillId"?: "string"}',
     );
 
     return parts.join("\n");
@@ -148,7 +228,8 @@ export class BaseAgent implements IAgent {
     ];
 
     if (input.context.diff) {
-      const maxTokens = input.level === "quick" ? 4000 : input.level === "standard" ? 8000 : 24000;
+      const maxTokens =
+        input.level === "quick" ? 4000 : input.level === "standard" ? 8000 : 24000;
       parts.push(
         `\n## Git Diff\n\`\`\`diff\n${truncateToTokens(input.context.diff, maxTokens)}\n\`\`\``,
       );
@@ -162,6 +243,13 @@ export class BaseAgent implements IAgent {
       parts.push(`\n## AST Summary\n${input.context.astSummary}`);
     }
 
+    if ((input.suggestedSkillIds ?? []).length > 0) {
+      parts.push(
+        `\n## Router Skill Suggestions\nThe router suggests these skills may be relevant: ${input.suggestedSkillIds!.join(", ")}. ` +
+        `Use \`request_skill\` to load any you need.`,
+      );
+    }
+
     return parts.join("\n");
   }
 
@@ -169,7 +257,6 @@ export class BaseAgent implements IAgent {
     content: string,
     input: AgentInput,
   ): { findings: Finding[]; summary: string; tokensUsed: number } {
-    // Extract JSON from response — look for code block or raw JSON
     const jsonMatch =
       content.match(/```(?:json)?\s*([\s\S]*?)```/) ??
       content.match(/(\{[\s\S]*\})/);
@@ -209,6 +296,13 @@ function extractToolCall(
   } catch {
     return null;
   }
+}
+
+function pushToolResult(messages: Message[], toolName: string, data: unknown): void {
+  messages.push({
+    role: "user" as const,
+    content: `Tool result for ${toolName}:\n${JSON.stringify(data, null, 2)}`,
+  } as Message);
 }
 
 function estimateTokens(text: string): number {

@@ -13,7 +13,8 @@ import { initProviders, getProvider } from "../providers/registry";
 import { initTools, executeTool } from "../tools/registry";
 import { initAgents, listAgentConfigs, createAgent, registerAgentConfig } from "../agents/registry";
 import { initSkills, getSkillManifests } from "../skills/registry";
-import { loadSkillContents } from "../skills/loader";
+import { loadSkillContent } from "../skills/loader";
+import { summarizeDiff } from "../tools/diff-summarizer";
 import { Router } from "./router";
 
 export class Orchestrator extends EventEmitter {
@@ -87,10 +88,11 @@ export class Orchestrator extends EventEmitter {
       const router = new Router(provider, this.config.router.model);
       const agentCatalog = listAgentConfigs();
       const skillCatalog = getSkillManifests();
+      const diffSummary = summarizeDiff(diffText);
 
       const routerDecision = this.config.router.enabled
         ? await router.decide(
-            diffText,
+            diffSummary,
             request.level,
             agentCatalog,
             skillCatalog,
@@ -99,7 +101,7 @@ export class Orchestrator extends EventEmitter {
           )
         : {
             selectedAgents: request.agentIds ?? agentCatalog.map((a) => a.id),
-            selectedSkills: request.skillIds ?? [],
+            suggestedSkills: request.skillIds ?? [],
             suggestedTools: ["git-diff"],
             rationale: "Router disabled",
           };
@@ -115,10 +117,7 @@ export class Orchestrator extends EventEmitter {
 
       const context = await this.gatherContext(diffText, request, routerDecision.suggestedTools);
 
-      // Step 3: Load skill contents lazily
-      const skillContents = await loadSkillContents(routerDecision.selectedSkills);
-
-      // Step 4: Register any ephemeral agents from router
+      // Step 3: Register any ephemeral agents from router
       for (const ephemeralConfig of routerDecision.ephemeralAgentConfigs ?? []) {
         registerAgentConfig({ ...ephemeralConfig, id: `ephemeral-${ephemeralConfig.id}` });
         routerDecision.selectedAgents.push(`ephemeral-${ephemeralConfig.id}`);
@@ -134,7 +133,8 @@ export class Orchestrator extends EventEmitter {
         routerDecision.selectedAgents,
         request.level,
         context,
-        skillContents,
+        skillCatalog,
+        routerDecision.suggestedSkills ?? [],
       );
 
       session.agentResults = agentResults;
@@ -222,7 +222,8 @@ export class Orchestrator extends EventEmitter {
     agentIds: string[],
     level: ReviewLevel,
     context: import("../types/agent").AgentContext,
-    skillContents: Map<string, string>,
+    skillCatalog: import("../types/skill").SkillManifest[],
+    suggestedSkillIds: string[],
   ): Promise<AgentResult[]> {
     const provider = getProvider(this.config.defaultProvider);
     const allConfigs = listAgentConfigs();
@@ -237,23 +238,28 @@ export class Orchestrator extends EventEmitter {
       logger.warn("No agents available for this level, using all configured agents");
     }
 
+    // Shared lazy skill loader — content is cached inside loadSkillContent
+    const skillLoader = (id: string) => loadSkillContent(id);
+
     const results = await Promise.allSettled(
       tasks.map(async (config) => {
         const runId = `${sessionId}:${config.id}`;
         this.agentRunRepo.create(runId, sessionId, config.id, config.name, config.model);
 
-        // Build skill contents relevant to this agent
-        const agentSkillContents = new Map<string, string>();
-        for (const skillId of [...config.builtinSkills, ...skillContents.keys()]) {
-          if (skillContents.has(skillId)) {
-            agentSkillContents.set(skillId, skillContents.get(skillId)!);
-          }
-        }
-
-        const agent = createAgent(config, provider, agentSkillContents);
+        const agent = createAgent(config, provider);
         this.emit("agent-start", { agentId: config.id, agentName: config.name });
 
-        const result = await agent.run({ reviewId: sessionId, level, context });
+        // Merge router suggestions with agent's own builtinSkills as hints
+        const agentSuggested = [...new Set([...suggestedSkillIds, ...config.builtinSkills])];
+
+        const result = await agent.run({
+          reviewId: sessionId,
+          level,
+          context,
+          skillCatalog,
+          suggestedSkillIds: agentSuggested,
+          skillLoader,
+        });
 
         this.agentRunRepo.complete(runId, result);
         this.emit("agent-complete", { agentId: config.id, findingCount: result.findings.length });

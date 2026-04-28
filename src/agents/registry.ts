@@ -62,9 +62,8 @@ export function listAgentConfigs(): AgentConfig[] {
 export function createAgent(
   config: AgentConfig,
   provider: IProvider,
-  injectedSkills: Map<string, string> = new Map(),
 ): BaseAgent {
-  return new BaseAgent(config, provider, injectedSkills);
+  return new BaseAgent(config, provider);
 }
 
 export function registerAgentConfig(config: AgentConfig): void {
