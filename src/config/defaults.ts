@@ -37,7 +37,12 @@ export const DEFAULT_CONFIG: CRHConfig = {
   },
   councilMode: {
     enabled: false,
-    defaultMembers: ["security", "performance", "architecture"],
+    defaultAgent: "security",
+    defaultModels: [
+      "anthropic/claude-opus-4-5",
+      "openai/gpt-4o",
+      "google/gemini-2.5-pro-preview",
+    ],
     chairModel: "anthropic/claude-opus-4-5",
     rounds: 1,
   },

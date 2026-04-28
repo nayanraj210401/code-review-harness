@@ -1,19 +1,28 @@
 import type { Command } from "commander";
 import { loadConfig } from "../../config/loader";
 import { initFormatters, getFormatter } from "../../formatters/registry";
-import { Orchestrator } from "../../core/orchestrator";
 import { initProviders, getProvider } from "../../providers/registry";
-import { initAgents, listAgentConfigs } from "../../agents/registry";
+import { initAgents, getAgentConfig } from "../../agents/registry";
+import { initSkills, getSkillManifests } from "../../skills/registry";
+import { loadSkillContent } from "../../skills/loader";
 import { runCouncil } from "../../core/council";
 import { executeTool } from "../../tools/registry";
 import { initTools } from "../../tools/registry";
-import { startSpinner, succeedSpinner, failSpinner } from "../ui/spinner";
+import { startSpinner, succeedSpinner, failSpinner, updateSpinner } from "../ui/spinner";
 
 export function registerCouncilCommand(program: Command): void {
   program
     .command("council")
-    .description("Run a council review (multi-agent deliberation)")
-    .option("--members <agents>", "Comma-separated agent IDs for council", parseComma)
+    .description("Run a council review — same agent role, multiple model families deliberate")
+    .option(
+      "--agent <id>",
+      "Agent role all council members share (e.g. security)",
+    )
+    .option(
+      "--models <models>",
+      "Comma-separated model IDs — one member per model (min 2)",
+      parseComma,
+    )
     .option("--chair-model <model>", "Model for chair synthesis")
     .option("-l, --level <level>", "Review level", "standard")
     .option("--format <format>", "Output format", "pretty")
@@ -25,19 +34,26 @@ export function registerCouncilCommand(program: Command): void {
       initFormatters();
       initProviders(config);
       initTools();
-      initAgents(config.agentsDir);
+      initAgents(config.agentsDir, process.cwd() + "/.crh/agents");
+      initSkills(config.skillsDir);
 
       const provider = getProvider(config.defaultProvider);
       const chairModel = opts.chairModel ?? config.councilMode.chairModel;
 
-      const memberIds: string[] = opts.members ??
-        config.councilMode.defaultMembers;
+      // Resolve agent role
+      const agentId: string = opts.agent ?? config.councilMode.defaultAgent;
+      const baseConfig = getAgentConfig(agentId);
+      if (!baseConfig) {
+        console.error(
+          `Agent "${agentId}" not found. Run \`crh agents list\` to see available agents.`,
+        );
+        process.exit(1);
+      }
 
-      const allConfigs = listAgentConfigs();
-      const memberConfigs = allConfigs.filter((c) => memberIds.includes(c.id));
-
-      if (memberConfigs.length === 0) {
-        console.error("No valid agent IDs found for council.");
+      // Resolve models
+      const models: string[] = opts.models ?? config.councilMode.defaultModels;
+      if (models.length < 2) {
+        console.error("Council mode requires at least 2 models. Use --models claude-opus-4-5,gpt-4o");
         process.exit(1);
       }
 
@@ -53,17 +69,30 @@ export function registerCouncilCommand(program: Command): void {
         }
       }
 
-      startSpinner(`Council mode: ${memberConfigs.map((c) => c.name).join(", ")} + chair`);
+      const modelLabels = models.map((m) => m.includes("/") ? m.split("/").pop()! : m);
+      startSpinner(
+        `Council: ${baseConfig.name} × [${modelLabels.join(", ")}] + chair`,
+      );
+
+      const skillCatalog = getSkillManifests();
+      const skillLoader = (id: string) => loadSkillContent(id);
+
+      // Merge router hints (none in council — agent decides on its own)
+      const suggestedSkillIds = [...baseConfig.builtinSkills];
 
       try {
         const councilResult = await runCouncil({
-          memberConfigs,
+          baseConfig,
+          models,
           chairModel,
           provider,
           agentInput: {
             reviewId: "council",
             level: opts.level,
             context: { diff },
+            skillCatalog,
+            suggestedSkillIds,
+            skillLoader,
           },
         });
 
@@ -71,7 +100,7 @@ export function registerCouncilCommand(program: Command): void {
           `Council complete · ${councilResult.consensus.length} consensus findings · ${councilResult.durationMs}ms`,
         );
 
-        // Build a fake ReviewSession to reuse formatters
+        // Reuse formatters via a ReviewSession-shaped object
         const fakeSession = {
           id: councilResult.id,
           createdAt: new Date().toISOString(),
@@ -86,7 +115,7 @@ export function registerCouncilCommand(program: Command): void {
             category: "consensus",
             title: c.title,
             description: c.description,
-            suggestion: "",
+            suggestion: `Agreement: ${Math.round(c.agreementScore * 100)}% of models`,
             confidence: c.agreementScore,
           })),
           councilResult,

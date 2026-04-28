@@ -37,7 +37,10 @@ export interface CRHConfig {
   skills: Record<string, SkillPresetConfig>;
   councilMode: {
     enabled: boolean;
-    defaultMembers: string[];
+    /** Agent role all council members share — diversity comes from models, not roles */
+    defaultAgent: string;
+    /** One model per council member — different model families give genuinely independent views */
+    defaultModels: string[];
     chairModel: string;
     rounds: number;
   };

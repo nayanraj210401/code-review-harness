@@ -39,7 +39,8 @@ export const CRHConfigSchema = z.object({
   skills: z.record(z.string(), SkillPresetSchema),
   councilMode: z.object({
     enabled: z.boolean(),
-    defaultMembers: z.array(z.string()),
+    defaultAgent: z.string(),
+    defaultModels: z.array(z.string()).min(2),
     chairModel: z.string(),
     rounds: z.number().int().min(1).max(3),
   }),

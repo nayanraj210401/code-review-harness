@@ -79,8 +79,8 @@ crh review --diff-args "main HEAD" --level deep
 # Target specific agents and skills
 crh review --agents security,correctness --skills owasp-top10,sql-injection
 
-# Council mode — agents deliberate and reach consensus
-crh council --members security,performance,architecture --level standard
+# Council mode — same agent, multiple model families deliberate
+crh council --agent security --models anthropic/claude-opus-4-5,openai/gpt-4o,google/gemini-2.5-pro-preview
 
 # Output formats
 crh review --format markdown --output review.md
@@ -207,15 +207,25 @@ crh skills install ./my-checklist.md
 
 ## Council mode
 
-In council mode, agents deliberate before producing a final answer:
+Council mode runs **one agent role across multiple model families**. The key insight: different model families (Claude, GPT-4o, Gemini) have genuinely different training and biases, so disagreement between them is real signal. Same-model-family instances tend to agree with each other — which defeats the purpose.
 
-1. **Individual review** — each agent reviews the diff independently
-2. **Peer critique** — agents rank each other's findings anonymously
-3. **Synthesis** — a chair model (default: claude-opus-4-5) computes consensus, surfaces high-agreement findings
+Three stages:
+1. **Independent review** — each model runs the same agent prompt against the diff, in parallel
+2. **Peer critique** — each model critiques the others' findings; because they share expertise, disagreement is meaningful
+3. **Synthesis** — a chair model surfaces consensus findings with an agreement score (e.g. 2/3 models flagged this)
 
 ```bash
-crh council --members security,performance,architecture --level standard --format markdown
+# Security review: three model families deliberate
+crh council --agent security --models anthropic/claude-opus-4-5,openai/gpt-4o,google/gemini-2.5-pro-preview
+
+# Architecture review with just two models
+crh council --agent architecture --models anthropic/claude-opus-4-5,openai/gpt-4o --level deep
+
+# Output to markdown
+crh council --agent correctness --models anthropic/claude-opus-4-5,openai/gpt-4o --format markdown
 ```
+
+Findings with a high agreement score (all models agree) are surfaced first. Findings raised by only one model are flagged as outliers for human judgement.
 
 ---
 
@@ -292,7 +302,12 @@ Config file: `~/.crh/config.json` (created by `crh init`)
   },
   "councilMode": {
     "enabled": false,
-    "defaultMembers": ["security", "performance", "architecture"],
+    "defaultAgent": "security",
+    "defaultModels": [
+      "anthropic/claude-opus-4-5",
+      "openai/gpt-4o",
+      "google/gemini-2.5-pro-preview"
+    ],
     "chairModel": "anthropic/claude-opus-4-5"
   }
 }
