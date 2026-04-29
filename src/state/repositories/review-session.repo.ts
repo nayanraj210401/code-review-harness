@@ -5,6 +5,11 @@ export class ReviewSessionRepo {
   constructor(private db: Database.Database) {}
 
   create(session: ReviewSession): void {
+    // Clear stale incomplete sessions with the same hash so the UNIQUE constraint doesn't block retries
+    this.db
+      .prepare(`DELETE FROM review_sessions WHERE context_hash = ? AND status != 'complete'`)
+      .run(session.contextHash);
+
     this.db
       .prepare(
         `INSERT INTO review_sessions (
