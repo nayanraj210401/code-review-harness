@@ -52,9 +52,11 @@ jobs:
       - name: Run code review
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           node bin/crh.js review \
-            --diff-args "${{ github.event.pull_request.base.sha }} ${{ github.event.pull_request.head.sha }}" \
+            --diff-args "$BASE_SHA $HEAD_SHA" \
             --level standard \
             --format pretty \
             --no-cache \
