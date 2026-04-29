@@ -114,10 +114,16 @@ export function registerReviewCommand(program: Command): void {
           process.stdout.write(output + "\n");
         }
 
-        const exitCode = computeExitCode(
-          session.findings,
-          opts.failOn ?? "high",
-        );
+        const agentErrors = session.agentResults.filter((r) => r.error).length;
+        if (agentErrors > 0) {
+          const total = session.agentResults.length;
+          console.error(`\n⚠  ${agentErrors}/${total} agent(s) failed to produce results — review may be incomplete.`);
+          logger.debug(`[review] agent errors: ${session.agentResults.filter((r) => r.error).map((r) => `${r.agentId}: ${r.error}`).join("; ")}`);
+        }
+
+        const exitCode = agentErrors > 0 && session.findings.length === 0
+          ? 2  // all agents errored, nothing to trust
+          : computeExitCode(session.findings, opts.failOn ?? "high");
         process.exit(exitCode);
       } catch (err) {
         failSpinner(`Review failed: ${err}`);

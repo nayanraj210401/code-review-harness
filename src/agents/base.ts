@@ -144,7 +144,7 @@ export class BaseAgent implements IAgent {
         ];
       }
 
-      const { findings, summary, tokensUsed } = this.parseResponse(finalContent, input);
+      const { findings, summary, tokensUsed, error } = this.parseResponse(finalContent, input);
 
       return {
         agentId: this.config.id,
@@ -155,6 +155,7 @@ export class BaseAgent implements IAgent {
         tokensUsed,
         durationMs: Date.now() - start,
         toolCallsIssued,
+        error,
       };
     } catch (err) {
       logger.error(`Agent ${this.config.id} failed: ${err}`);
@@ -255,18 +256,17 @@ export class BaseAgent implements IAgent {
   private parseResponse(
     content: string,
     input: AgentInput,
-  ): { findings: Finding[]; summary: string; tokensUsed: number } {
-    const jsonMatch =
-      content.match(/```(?:json)?\s*([\s\S]*?)```/) ??
-      content.match(/(\{[\s\S]*\})/);
+  ): { findings: Finding[]; summary: string; tokensUsed: number; error?: string } {
+    const jsonStr = extractJsonFromContent(content);
 
-    if (!jsonMatch) {
-      logger.warn(`[${this.config.id}] no JSON found in response`);
-      return { findings: [], summary: content.slice(0, 200), tokensUsed: 0 };
+    if (!jsonStr) {
+      const msg = "no JSON found in response";
+      logger.warn(`[${this.config.id}] ${msg}`);
+      return { findings: [], summary: content.slice(0, 200), tokensUsed: 0, error: msg };
     }
 
     try {
-      const parsed = ResponseSchema.parse(JSON.parse(jsonMatch[1]));
+      const parsed = ResponseSchema.parse(JSON.parse(jsonStr));
       const findings: Finding[] = parsed.findings.map((f) => ({
         ...f,
         id: generateId(),
@@ -279,10 +279,37 @@ export class BaseAgent implements IAgent {
         tokensUsed: estimateTokens(content) + estimateTokens(input.context.diff ?? ""),
       };
     } catch (err) {
-      logger.warn(`[${this.config.id}] failed to parse JSON response: ${err}`);
-      return { findings: [], summary: "", tokensUsed: 0 };
+      const msg = `failed to parse JSON response: ${err}`;
+      logger.warn(`[${this.config.id}] ${msg}`);
+      return { findings: [], summary: "", tokensUsed: 0, error: msg };
     }
   }
+}
+
+// Extracts the first balanced JSON object from model output.
+// Scanning braces (while respecting string literals) handles models that include
+// code fences like ```sql inside description strings, which break regex-based extraction.
+function extractJsonFromContent(content: string): string | null {
+  const fenceIdx = content.search(/```(?:json)?\s*\n/);
+  const start = content.indexOf("{", fenceIdx >= 0 ? fenceIdx : 0);
+  if (start === -1) return null;
+
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  for (let i = start; i < content.length; i++) {
+    const c = content[i];
+    if (escape) { escape = false; continue; }
+    if (inString) {
+      if (c === "\\") escape = true;
+      else if (c === '"') inString = false;
+      continue;
+    }
+    if (c === '"') { inString = true; continue; }
+    if (c === "{") depth++;
+    if (c === "}") { if (--depth === 0) return content.slice(start, i + 1); }
+  }
+  return null;
 }
 
 function extractToolCall(
