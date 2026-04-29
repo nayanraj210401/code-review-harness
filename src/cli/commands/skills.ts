@@ -3,6 +3,7 @@ import { basename, join } from "path";
 import type { Command } from "commander";
 import { loadConfig } from "../../config/loader";
 import { initSkills, listSkills } from "../../skills/registry";
+import { logger } from "../../utils/logger";
 
 export function registerSkillsCommand(program: Command): void {
   const skills = program.command("skills").description("Manage review skills");
@@ -12,9 +13,12 @@ export function registerSkillsCommand(program: Command): void {
     .description("List all available skills")
     .action(() => {
       const config = loadConfig();
+      logger.setLevel(config.logLevel);
+      logger.debug(`[skills:list] skillsDir=${config.skillsDir}`);
       initSkills(config.skillsDir);
 
       const all = listSkills();
+      logger.debug(`[skills:list] found ${all.length} skills`);
       if (all.length === 0) {
         console.log("No skills found.");
         return;
@@ -36,6 +40,8 @@ export function registerSkillsCommand(program: Command): void {
     .description("Install a skill from a local .md file")
     .action((skillPath: string) => {
       const config = loadConfig();
+      logger.setLevel(config.logLevel);
+      logger.debug(`[skills:install] path=${skillPath} dest=${config.skillsDir}`);
       if (!existsSync(skillPath)) {
         console.error(`File not found: ${skillPath}`);
         process.exit(1);
@@ -53,6 +59,8 @@ export function registerSkillsCommand(program: Command): void {
     .description("Show the full content of a skill")
     .action(async (id: string) => {
       const config = loadConfig();
+      logger.setLevel(config.logLevel);
+      logger.debug(`[skills:show] id=${id} skillsDir=${config.skillsDir}`);
       initSkills(config.skillsDir);
       const all = listSkills();
       const skill = all.find((s) => s.manifest.id === id);

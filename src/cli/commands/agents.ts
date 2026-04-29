@@ -1,6 +1,7 @@
 import type { Command } from "commander";
 import { loadConfig } from "../../config/loader";
 import { initAgents, listAgentConfigs } from "../../agents/registry";
+import { logger } from "../../utils/logger";
 
 export function registerAgentsCommand(program: Command): void {
   const agents = program.command("agents").description("Manage review agents");
@@ -10,9 +11,12 @@ export function registerAgentsCommand(program: Command): void {
     .description("List all available agents")
     .action(() => {
       const config = loadConfig();
+      logger.setLevel(config.logLevel);
+      logger.debug(`[agents:list] agentsDir=${config.agentsDir}`);
       initAgents(config.agentsDir, process.cwd() + "/.crh/agents");
 
       const all = listAgentConfigs();
+      logger.debug(`[agents:list] found ${all.length} agents`);
       if (all.length === 0) {
         console.log("No agents found.");
         return;
@@ -35,6 +39,8 @@ export function registerAgentsCommand(program: Command): void {
     .description("Show full agent config and system prompt")
     .action((id: string) => {
       const config = loadConfig();
+      logger.setLevel(config.logLevel);
+      logger.debug(`[agents:show] id=${id} agentsDir=${config.agentsDir}`);
       initAgents(config.agentsDir);
       const all = listAgentConfigs();
       const agent = all.find((a) => a.id === id);

@@ -10,6 +10,7 @@ import { join } from "path";
 import { promisify } from "util";
 import type { CRHConfig } from "../../types/config";
 import { DEFAULT_CONFIG } from "../../config/defaults";
+import { logger } from "../../utils/logger";
 
 const execFileAsync = promisify(execFile);
 
@@ -55,6 +56,8 @@ export async function runInit(options: {
   const { default: inquirer } = await import("inquirer");
   const chalk = (await import("chalk")).default;
 
+  logger.debug(`[init] reset=${!!options.reset} providerOnly=${!!options.providerOnly} configPath=${CONFIG_PATH}`);
+
   console.log(
     chalk.cyan.bold(
       "\n┌─────────────────────────────────────────────────────┐\n│  Welcome to Code Review Harness (crh)               │\n│  Let's get you set up in under a minute.            │\n└─────────────────────────────────────────────────────┘\n",
@@ -79,9 +82,9 @@ export async function runInit(options: {
     console.log(chalk.gray(`Backed up to ${CONFIG_PATH}.bak`));
   }
 
-  // Auto-detect what's available
   process.stdout.write("Detecting available tools...\n");
   const detected = await detectAvailableProviders();
+  logger.debug(`[init] detected: claude=${detected.claudeFound}(${detected.claudeVersion}) codex=${detected.codexFound}(${detected.codexVersion}) openrouter=${detected.openrouterKeySet}`);
 
   if (detected.claudeFound) {
     console.log(chalk.green(`  ✔ claude CLI  ${detected.claudeVersion}`));
@@ -109,7 +112,9 @@ export async function runInit(options: {
   }
 
   const answers = await askQuestions(inquirer, detected, options.providerOnly ?? false);
+  logger.debug(`[init] answers: setupMode=${answers.setupMode} defaultLevel=${answers.defaultLevel} councilEnabled=${answers.councilEnabled} agents=[${answers.enabledAgents.join(",")}]`);
   const config = buildConfig(answers, detected);
+  logger.debug(`[init] built config: defaultProvider=${config.defaultProvider} router.model=${config.router.model}`);
 
   for (const dir of [CRH_DIR, AGENTS_DIR, SKILLS_DIR]) {
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
