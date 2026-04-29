@@ -66,10 +66,6 @@ export class ClaudeCliProvider extends BaseProvider {
         "--print",           // non-interactive, print response to stdout
       ];
 
-      if (req.maxTokens) {
-        args.push("--max-tokens", String(req.maxTokens));
-      }
-
       const stdout = await spawnWithInput("claude", args, prompt);
       return parseClaudeCliOutput(stdout, req.model, Date.now() - start);
     });

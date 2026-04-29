@@ -17,8 +17,10 @@ interface Colors {
 
 function loadColors(): Colors {
   try {
+    // chalk v5 is ESM-only; require() returns { default: instance } in CJS context
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const c = require("chalk");
+    const imported = require("chalk");
+    const c = imported.default ?? imported;
     return {
       bold:   (s: string) => c.bold(s),
       green:  (s: string) => c.green(s),
