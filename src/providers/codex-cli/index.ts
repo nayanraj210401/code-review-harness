@@ -82,7 +82,8 @@ export class CodexCliProvider extends BaseProvider {
 }
 
 function normalizeModel(model: string): string {
-  return model.replace(/^codex-cli\//, "");
+  // Strip provider prefixes — agents may use openrouter-style IDs (e.g. openai/gpt-4o)
+  return model.replace(/^(codex-cli|openai)\//, "");
 }
 
 function buildPrompt(req: CompletionRequest): string {

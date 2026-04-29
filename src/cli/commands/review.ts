@@ -50,7 +50,11 @@ export function registerReviewCommand(program: Command): void {
         defaultFormat: opts.format,
       });
 
-      logger.setLevel(config.logLevel);
+      if (opts.verbose) logger.setLevel("debug");
+      else logger.setLevel(config.logLevel);
+
+      logger.debug(`[review] level=${opts.level ?? config.defaultLevel} format=${opts.format ?? config.defaultFormat} provider=${config.defaultProvider}`);
+      logger.debug(`[review] diff-args=${JSON.stringify(opts.diffArgs ?? ["HEAD~1","HEAD"])} agents=${opts.agents ?? "(router)"} skills=${opts.skills ?? "(router)"}`);
       initFormatters();
 
       const request: ReviewRequest = {
@@ -70,24 +74,35 @@ export function registerReviewCommand(program: Command): void {
       const orch = new Orchestrator(config);
 
       // Wire up progress display
-      orch.on("routing", () => startSpinner("🔀 Routing to relevant agents..."));
+      orch.on("routing", () => {
+        startSpinner("Routing to relevant agents...");
+        logger.debug("[review] router started");
+      });
       orch.on("gathering-context", ({ routerDecision }) => {
-        updateSpinner(
-          `📂 Gathering context · Agents: ${routerDecision.selectedAgents.join(", ")}`,
-        );
+        updateSpinner(`Gathering context · Agents: ${routerDecision.selectedAgents.join(", ")}`);
+        logger.debug(`[review] router decision: agents=[${routerDecision.selectedAgents.join(", ")}] skills=[${(routerDecision.suggestedSkills ?? []).join(", ")}] rationale="${routerDecision.rationale}"`);
       });
-      orch.on("running-agents", () => updateSpinner("🤖 Running agents in parallel..."));
-      orch.on("agent-complete", ({ agentName, findingCount }) => {
+      orch.on("running-agents", ({ selected }) => {
+        updateSpinner("Running agents in parallel...");
+        logger.debug(`[review] running ${selected?.length ?? "?"} agents: ${selected?.join(", ")}`);
+      });
+      orch.on("agent-start", ({ agentId, agentName }) => {
+        logger.debug(`[review] agent start: ${agentId} (${agentName})`);
+      });
+      orch.on("agent-complete", ({ agentId, agentName, findingCount }) => {
         updateSpinner(`✓ ${agentName}: ${findingCount} findings`);
+        logger.debug(`[review] agent done: ${agentId} → ${findingCount} findings`);
       });
-      orch.on("cache-hit", () => {
-        updateSpinner("⚡ Cache hit — using previous result");
+      orch.on("cache-hit", ({ id }) => {
+        updateSpinner("Cache hit — using previous result");
+        logger.debug(`[review] cache hit: session ${id}`);
       });
 
       try {
         const session = await orch.review(request);
 
         succeedSpinner(`Review complete · ${session.findings.length} findings in ${session.durationMs}ms`);
+        logger.debug(`[review] complete: ${session.findings.length} findings, ${session.totalTokensUsed} tokens, ${session.durationMs}ms, id=${session.id}`);
 
         const formatter = getFormatter(request.format);
         const output = formatter.format(session);

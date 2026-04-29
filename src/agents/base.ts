@@ -7,9 +7,10 @@ import type {
   IAgent,
 } from "../types/agent";
 import type { SkillManifest } from "../types/skill";
-import type { IProvider, Message } from "../types/provider";
+import type { Message } from "../types/provider";
 import type { ToolResult } from "../types/tool";
 import { executeTool } from "../tools/base";
+import { getProviderForModel } from "../providers/registry";
 import { generateId } from "../utils/id";
 import { logger } from "../utils/logger";
 import { truncateToTokens } from "../utils/truncate";
@@ -33,10 +34,7 @@ const ResponseSchema = z.object({
 });
 
 export class BaseAgent implements IAgent {
-  constructor(
-    readonly config: AgentConfig,
-    private provider: IProvider,
-  ) {}
+  constructor(readonly config: AgentConfig) {}
 
   async run(input: AgentInput): Promise<AgentResult> {
     const start = Date.now();
@@ -45,6 +43,7 @@ export class BaseAgent implements IAgent {
     const activeSkills = new Map<string, string>();
 
     try {
+      const provider = getProviderForModel(this.config.model);
       const systemPrompt = this.buildSystemPrompt(input, activeSkills);
       const userPrompt = this.buildUserPrompt(input);
 
@@ -57,7 +56,7 @@ export class BaseAgent implements IAgent {
       const maxRounds = 8; // extra rounds for skill loading
 
       for (let round = 0; round < maxRounds; round++) {
-        const response = await this.provider.complete({
+        const response = await provider.complete({
           model: this.config.model,
           messages,
           temperature: this.config.temperature,

@@ -3,6 +3,7 @@ import { loadConfig } from "../../config/loader";
 import { getDb } from "../../state/db";
 import { ReviewSessionRepo } from "../../state/repositories/review-session.repo";
 import { ReviewSearch } from "../../state/search";
+import { logger } from "../../utils/logger";
 
 export function registerHistoryCommand(program: Command): void {
   program
@@ -13,15 +14,19 @@ export function registerHistoryCommand(program: Command): void {
     .option("--json", "Output as JSON")
     .action((opts) => {
       const config = loadConfig();
+      logger.setLevel(config.logLevel);
+      logger.debug(`[history] search="${opts.search ?? ""}" limit=${opts.limit} json=${!!opts.json} dbPath=${config.dbPath}`);
       const db = getDb(config.dbPath);
 
       let sessions;
       if (opts.search) {
         const searcher = new ReviewSearch(db);
         sessions = searcher.search(opts.search, parseInt(opts.limit, 10));
+        logger.debug(`[history] FTS search="${opts.search}" → ${sessions.length} results`);
       } else {
         const repo = new ReviewSessionRepo(db);
         sessions = repo.list(parseInt(opts.limit, 10));
+        logger.debug(`[history] listing ${sessions.length} sessions`);
       }
 
       if (opts.json) {

@@ -6,6 +6,7 @@ import { initTools } from "../../tools/registry";
 import { initAgents } from "../../agents/registry";
 import { initSkills } from "../../skills/registry";
 import { initProviders } from "../../providers/registry";
+import { logger } from "../../utils/logger";
 import type { ReviewRequest } from "../../types/review";
 
 interface MCPRequest {
@@ -35,6 +36,8 @@ export function registerServeCommand(program: Command): void {
       }
 
       const config = loadConfig();
+      logger.setLevel(config.logLevel);
+      logger.debug(`[serve] starting MCP server — provider=${config.defaultProvider} logLevel=${config.logLevel}`);
       initFormatters();
       initProviders(config);
       initTools();
@@ -79,6 +82,7 @@ async function handleRequest(
     return;
   }
 
+  logger.debug(`[serve] MCP request id=${req.id} method=${req.method}`);
   try {
     switch (req.method) {
       case "initialize": {
@@ -145,6 +149,7 @@ async function handleRequest(
       case "tools/call": {
         const toolName = (req.params?.name as string) ?? "";
         const toolArgs = (req.params?.arguments as Record<string, unknown>) ?? {};
+        logger.debug(`[serve] tools/call tool=${toolName} args=${JSON.stringify(toolArgs).slice(0, 120)}`);
 
         let toolResult: unknown;
 

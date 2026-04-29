@@ -1,9 +1,9 @@
 import type { AgentConfig, ReviewLevel } from "../types/agent";
 import type { SkillManifest } from "../types/skill";
 import type { RouterDecision } from "../types/review";
-import type { IProvider } from "../types/provider";
 import type { DiffSummary } from "../tools/diff-summarizer";
 import { formatDiffSummaryForRouter } from "../tools/diff-summarizer";
+import { getProviderForModel } from "../providers/registry";
 import { logger } from "../utils/logger";
 
 const MAX_AGENTS: Record<ReviewLevel, number> = {
@@ -13,10 +13,7 @@ const MAX_AGENTS: Record<ReviewLevel, number> = {
 };
 
 export class Router {
-  constructor(
-    private provider: IProvider,
-    private model: string,
-  ) {}
+  constructor(private model: string) {}
 
   async decide(
     diffSummary: DiffSummary,
@@ -73,7 +70,8 @@ Return JSON exactly:
 }`;
 
     try {
-      const response = await this.provider.complete({
+      const provider = getProviderForModel(this.model);
+      const response = await provider.complete({
         model: this.model,
         messages: [
           { role: "system", content: systemPrompt },

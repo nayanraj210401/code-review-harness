@@ -8,6 +8,7 @@ import type { ProviderConfig } from "../../types/config";
 import { BaseProvider } from "../base";
 import { parseClaudeCliOutput } from "./parser";
 import { withRetry } from "../../utils/retry";
+import { logger } from "../../utils/logger";
 
 function spawnWithInput(
   cmd: string,
@@ -16,11 +17,13 @@ function spawnWithInput(
   timeoutMs = 120000,
 ): Promise<string> {
   return new Promise((resolve, reject) => {
+    logger.debug(`[claude-cli] ${cmd} ${args.join(" ")} (prompt: ${input.length} chars)`);
+
     const child = spawn(cmd, args, { stdio: ["pipe", "pipe", "pipe"] });
-    const chunks: Buffer[] = [];
+    const outChunks: Buffer[] = [];
     const errChunks: Buffer[] = [];
 
-    child.stdout.on("data", (d: Buffer) => chunks.push(d));
+    child.stdout.on("data", (d: Buffer) => outChunks.push(d));
     child.stderr.on("data", (d: Buffer) => errChunks.push(d));
 
     const timer = setTimeout(() => {
@@ -31,9 +34,12 @@ function spawnWithInput(
     child.on("close", (code) => {
       clearTimeout(timer);
       if (code !== 0) {
-        reject(new Error(`${cmd} exited with code ${code}: ${Buffer.concat(errChunks).toString().trim()}`));
+        const stdout = Buffer.concat(outChunks).toString().trim();
+        const stderr = Buffer.concat(errChunks).toString().trim();
+        const detail = [stderr, stdout].filter(Boolean).join(" | stdout: ");
+        reject(new Error(`${cmd} exited with code ${code}: ${detail || "(no output)"}`));
       } else {
-        resolve(Buffer.concat(chunks).toString());
+        resolve(Buffer.concat(outChunks).toString());
       }
     });
 
@@ -65,10 +71,6 @@ export class ClaudeCliProvider extends BaseProvider {
         "--model", model,
         "--print",           // non-interactive, print response to stdout
       ];
-
-      if (req.maxTokens) {
-        args.push("--max-tokens", String(req.maxTokens));
-      }
 
       const stdout = await spawnWithInput("claude", args, prompt);
       return parseClaudeCliOutput(stdout, req.model, Date.now() - start);
@@ -106,8 +108,8 @@ export class ClaudeCliProvider extends BaseProvider {
 }
 
 function normalizeModel(model: string): string {
-  // Strip "claude-cli/" prefix if present
-  return model.replace(/^claude-cli\//, "");
+  // Strip provider prefixes — agents may use openrouter-style IDs (e.g. anthropic/claude-opus-4-5)
+  return model.replace(/^(claude-cli|anthropic)\//, "");
 }
 
 function buildPrompt(req: CompletionRequest): string {

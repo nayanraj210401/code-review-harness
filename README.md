@@ -11,14 +11,18 @@ crh review --level standard --format pretty
 ## How it works
 
 ```
-git diff → Router (fast model) → selects relevant agents + skills
-                                        ↓
-                    Security  Performance  Architecture  Correctness  Testing
-                    (claude)  (gpt-4o)     (gemini)     (claude)     (claude)
-                                        ↓
-                              findings deduplicated + sorted
-                                        ↓
-                         pretty / markdown / json / sarif
+git diff → DiffSummary (file list, languages, tokens)
+                ↓
+           Router (fast model) → selects agents, suggests skill hints
+                ↓
+   Security  Performance  Architecture  Correctness  Testing
+   (claude)  (gpt-4o)     (gemini)     (claude)     (claude)
+       ↓           ↓            ↓
+   request_skill?  synthesize_skill?   ... each agent decides at runtime
+                ↓
+          findings deduplicated + sorted
+                ↓
+     pretty / markdown / json / sarif
 ```
 
 **Agent = Model + Harness.** The harness handles routing, skills, state, tools, and output. The models do the thinking.
@@ -26,8 +30,8 @@ git diff → Router (fast model) → selects relevant agents + skills
 Three key ideas:
 
 - **Agents are data files, not code.** Each expert is a `.md` file with a YAML frontmatter + system prompt. Drop one in `~/.crh/agents/` to create a new expert — no compilation needed.
-- **Dynamic routing.** A cheap router model reads your diff and the full agent catalog, then picks the best agents for the job. Review level (`quick` / `standard` / `deep`) caps the budget, not the selection.
-- **Skills = progressive disclosure.** Skills are reusable prompt bundles (OWASP checklist, N+1 detector, etc.) Only their name and description are loaded upfront; full content is fetched lazily when selected.
+- **Structured diff routing.** The router receives a compact `DiffSummary` (file list, languages, key tokens) rather than the raw diff — so routing stays fast and accurate regardless of how large the PR is.
+- **Skills loaded at runtime by agents.** Agents see the full skill catalog as metadata in their system prompt and decide mid-review which skills to pull in. Calling `request_skill` injects the full checklist into the live conversation. Agents can also call `synthesize_skill` to write an ephemeral checklist for a domain the catalog doesn't cover.
 
 ---
 
@@ -75,8 +79,8 @@ crh review --diff-args "main HEAD" --level deep
 # Target specific agents and skills
 crh review --agents security,correctness --skills owasp-top10,sql-injection
 
-# Council mode — agents deliberate and reach consensus
-crh council --members security,performance,architecture --level standard
+# Council mode — same agent, multiple model families deliberate
+crh council --agent security --models anthropic/claude-opus-4-5,openai/gpt-4o,google/gemini-2.5-pro-preview
 
 # Output formats
 crh review --format markdown --output review.md
@@ -131,7 +135,7 @@ Each agent's model can be overridden per-agent in `~/.crh/config.json`.
 
 ## Built-in skills
 
-Skills are domain checklists injected into the relevant agent's context.
+Skills are domain checklists agents can load at runtime. Each agent sees the full catalog as metadata and calls `request_skill` to fetch content on demand — nothing is pre-loaded.
 
 | Skill | Description |
 |---|---|
@@ -141,6 +145,8 @@ Skills are domain checklists injected into the relevant agent's context.
 | `test-coverage` | Missing tests, edge cases, async test pitfalls |
 | `api-design` | REST conventions, status codes, pagination, auth |
 | `dependency-audit` | New packages, version pinning, license, supply chain |
+
+Agents can also call `synthesize_skill` to create an ephemeral checklist on-the-fly for domains not covered above (e.g. Solidity, GraphQL schemas, internal conventions).
 
 ---
 
@@ -201,15 +207,25 @@ crh skills install ./my-checklist.md
 
 ## Council mode
 
-In council mode, agents deliberate before producing a final answer:
+Council mode runs **one agent role across multiple model families**. The key insight: different model families (Claude, GPT-4o, Gemini) have genuinely different training and biases, so disagreement between them is real signal. Same-model-family instances tend to agree with each other — which defeats the purpose.
 
-1. **Individual review** — each agent reviews the diff independently
-2. **Peer critique** — agents rank each other's findings anonymously
-3. **Synthesis** — a chair model (default: claude-opus-4-5) computes consensus, surfaces high-agreement findings
+Three stages:
+1. **Independent review** — each model runs the same agent prompt against the diff, in parallel
+2. **Peer critique** — each model critiques the others' findings; because they share expertise, disagreement is meaningful
+3. **Synthesis** — a chair model surfaces consensus findings with an agreement score (e.g. 2/3 models flagged this)
 
 ```bash
-crh council --members security,performance,architecture --level standard --format markdown
+# Security review: three model families deliberate
+crh council --agent security --models anthropic/claude-opus-4-5,openai/gpt-4o,google/gemini-2.5-pro-preview
+
+# Architecture review with just two models
+crh council --agent architecture --models anthropic/claude-opus-4-5,openai/gpt-4o --level deep
+
+# Output to markdown
+crh council --agent correctness --models anthropic/claude-opus-4-5,openai/gpt-4o --format markdown
 ```
+
+Findings with a high agreement score (all models agree) are surfaced first. Findings raised by only one model are flagged as outliers for human judgement.
 
 ---
 
@@ -241,6 +257,30 @@ Then invoke with `/crh-review` or let Claude auto-trigger it when you ask for a 
 
 ---
 
+## GitHub Actions
+
+A ready-to-use workflow is included at `.github/workflows/code-review.yml`. It runs on every pull request, builds `crh` from source, and reviews the PR diff:
+
+```yaml
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+```
+
+The workflow uses `node bin/crh.js` directly (no global install required) and exits with code `1` if any `high` or `critical` finding is found, blocking the merge.
+
+**Setup:**
+1. Add `OPENROUTER_API_KEY` to your repo's **Settings → Secrets and variables → Actions**.
+2. The workflow is active — no further configuration needed.
+
+Change the severity threshold with `--fail-on`:
+
+```yaml
+run: node bin/crh.js review ... --fail-on critical   # only block on critical
+```
+
+---
+
 ## Configuration
 
 Config file: `~/.crh/config.json` (created by `crh init`)
@@ -262,7 +302,12 @@ Config file: `~/.crh/config.json` (created by `crh init`)
   },
   "councilMode": {
     "enabled": false,
-    "defaultMembers": ["security", "performance", "architecture"],
+    "defaultAgent": "security",
+    "defaultModels": [
+      "anthropic/claude-opus-4-5",
+      "openai/gpt-4o",
+      "google/gemini-2.5-pro-preview"
+    ],
     "chairModel": "anthropic/claude-opus-4-5"
   }
 }
@@ -281,6 +326,14 @@ crh history                          # last 10 reviews
 crh history --search "null pointer"  # full-text search
 crh history --json                   # machine-readable
 ```
+
+To run without writing a history file (CI, one-shot use), set `dbPath` to `:memory:`:
+
+```json
+{ "dbPath": ":memory:" }
+```
+
+The in-memory database is fully functional for the duration of the process — caching, deduplication, and session tracking all work — but nothing is written to disk.
 
 ---
 
