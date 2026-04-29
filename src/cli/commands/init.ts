@@ -291,14 +291,15 @@ function buildConfig(answers: WizardAnswers, detected: CliDetection): CRHConfig 
   config.defaultLevel = answers.defaultLevel;
   config.councilMode.enabled = answers.councilEnabled;
 
+  // Start with an empty providers map — only register what the user actually chose
+  config.providers = {};
+
   switch (answers.setupMode) {
     case "both-clis":
       config.defaultProvider = "claude-cli";
       config.providers["claude-cli"] = { id: "claude-cli", defaultModel: "claude-cli/claude-opus-4-5" };
       config.providers["codex-cli"] = { id: "codex-cli", defaultModel: "codex-cli/o4-mini" };
-      // Router uses the cheapest Claude model for analysis
       config.router.model = "claude-cli/claude-haiku-4-5";
-      // Council: one role, both model families — meaningful cross-model deliberation
       config.councilMode.defaultAgent = "security";
       config.councilMode.defaultModels = ["claude-cli/claude-opus-4-5", "codex-cli/gpt-4o"];
       config.councilMode.chairModel = "claude-cli/claude-opus-4-5";
