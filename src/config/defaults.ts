@@ -11,13 +11,7 @@ export const DEFAULT_CONFIG: CRHConfig = {
     model: "openai/gpt-4o-mini",
     enabled: true,
   },
-  providers: {
-    openrouter: {
-      id: "openrouter",
-      baseUrl: "https://openrouter.ai/api/v1",
-      defaultModel: "anthropic/claude-opus-4-5",
-    },
-  },
+  providers: {},
   agents: {
     security:      { id: "security",      enabled: true },
     performance:   { id: "performance",   enabled: true },
