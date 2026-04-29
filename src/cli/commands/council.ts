@@ -8,7 +8,8 @@ import { loadSkillContent } from "../../skills/loader";
 import { runCouncil } from "../../core/council";
 import { executeTool } from "../../tools/registry";
 import { initTools } from "../../tools/registry";
-import { startSpinner, succeedSpinner, failSpinner, updateSpinner } from "../ui/spinner";
+import { startSpinner, succeedSpinner, failSpinner } from "../ui/spinner";
+import { logger } from "../../utils/logger";
 
 export function registerCouncilCommand(program: Command): void {
   program
@@ -31,6 +32,11 @@ export function registerCouncilCommand(program: Command): void {
     .option("-o, --output <file>", "Write output to file")
     .action(async (opts) => {
       const config = loadConfig();
+      logger.setLevel(config.logLevel);
+
+      logger.debug(`[council] agent=${opts.agent ?? config.councilMode.defaultAgent} models=${JSON.stringify(opts.models ?? config.councilMode.defaultModels)}`);
+      logger.debug(`[council] chair=${opts.chairModel ?? config.councilMode.chairModel} level=${opts.level} format=${opts.format}`);
+
       initFormatters();
       initProviders(config);
       initTools();
@@ -69,9 +75,9 @@ export function registerCouncilCommand(program: Command): void {
       }
 
       const modelLabels = models.map((m) => m.includes("/") ? m.split("/").pop()! : m);
-      startSpinner(
-        `Council: ${baseConfig.name} × [${modelLabels.join(", ")}] + chair`,
-      );
+      logger.debug(`[council] resolved agent="${baseConfig.name}" (${agentId}), ${models.length} models, chair="${chairModel}"`);
+      logger.debug(`[council] diff length: ${diff.length} chars`);
+      startSpinner(`Council: ${baseConfig.name} × [${modelLabels.join(", ")}] + chair`);
 
       const skillCatalog = getSkillManifests();
       const skillLoader = (id: string) => loadSkillContent(id);
