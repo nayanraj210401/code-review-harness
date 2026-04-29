@@ -11,6 +11,9 @@ import {
   failSpinner,
 } from "../ui/spinner";
 import { logger } from "../../utils/logger";
+import { computeExitCode } from "../../utils/exit-code";
+
+export { computeExitCode };
 
 export function registerReviewCommand(program: Command): void {
   program
@@ -151,16 +154,3 @@ function readStdinIfPiped(): string | undefined {
   }
 }
 
-function computeExitCode(
-  findings: import("../../types/agent").Finding[],
-  failOn: string,
-): number {
-  const severityOrder = ["info", "low", "medium", "high", "critical"];
-  const threshold = severityOrder.indexOf(failOn);
-  if (threshold === -1) return 0;
-
-  const hasIssue = findings.some(
-    (f) => severityOrder.indexOf(f.severity) >= threshold,
-  );
-  return hasIssue ? 1 : 0;
-}
