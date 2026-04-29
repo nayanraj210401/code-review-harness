@@ -108,8 +108,8 @@ export class ClaudeCliProvider extends BaseProvider {
 }
 
 function normalizeModel(model: string): string {
-  // Strip "claude-cli/" prefix if present
-  return model.replace(/^claude-cli\//, "");
+  // Strip provider prefixes — agents may use openrouter-style IDs (e.g. anthropic/claude-opus-4-5)
+  return model.replace(/^(claude-cli|anthropic)\//, "");
 }
 
 function buildPrompt(req: CompletionRequest): string {
