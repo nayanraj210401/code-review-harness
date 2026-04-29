@@ -11,9 +11,9 @@ import {
   failSpinner,
 } from "../ui/spinner";
 import { logger } from "../../utils/logger";
-import { computeExitCode } from "../../utils/exit-code";
+import { computeExitCode, resolveReviewExitCode } from "../../utils/exit-code";
 
-export { computeExitCode };
+export { computeExitCode, resolveReviewExitCode };
 
 export function registerReviewCommand(program: Command): void {
   program
@@ -124,9 +124,7 @@ export function registerReviewCommand(program: Command): void {
           logger.debug(`[review] agent errors: ${session.agentResults.filter((r) => r.error).map((r) => `${r.agentId}: ${r.error}`).join("; ")}`);
         }
 
-        const exitCode = agentErrors > 0 && session.findings.length === 0
-          ? 2  // all agents errored, nothing to trust
-          : computeExitCode(session.findings, opts.failOn ?? "high");
+        const exitCode = resolveReviewExitCode(session.agentResults, session.findings, opts.failOn ?? "high");
         process.exit(exitCode);
       } catch (err) {
         failSpinner(`Review failed: ${err}`);
