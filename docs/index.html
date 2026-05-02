@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>review-harness — Multi-agent AI code review CLI</title>
+  <meta name="description" content="Catch bugs early by spinning up multiple AI expert agents — each from a different model family — to review your code in parallel." />
+  <meta property="og:title" content="review-harness (crh)" />
+  <meta property="og:description" content="Multi-agent AI code review CLI. Parallel expert agents, smart diff routing, zero-config extensibility." />
+  <meta property="og:type" content="website" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- Nav -->
+  <nav>
+    <div class="nav-inner">
+      <span class="nav-logo">crh</span>
+      <div class="nav-links">
+        <a href="#how-it-works">How it works</a>
+        <a href="#agents">Agents</a>
+        <a href="#providers">Providers</a>
+        <a href="https://github.com/nayanraj210401/code-review-harness" target="_blank" rel="noopener" class="nav-github">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/></svg>
+          GitHub
+        </a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Hero -->
+  <section class="hero">
+    <div class="hero-badge">Open source · MIT · npm install -g review-harness</div>
+    <h1>Multi-agent AI<br />code review, in parallel</h1>
+    <p class="hero-sub">
+      A lightweight router analyzes your diff first and picks the most relevant experts —
+      Security, Performance, Architecture, Correctness, Testing — each powered by a different model family.
+      Never run a security agent on a CSS change again.
+    </p>
+    <div class="hero-actions">
+      <div class="install-block">
+        <code>npm install -g review-harness</code>
+        <button class="copy-btn" onclick="copyInstall(this)" title="Copy">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+        </button>
+      </div>
+      <a href="https://github.com/nayanraj210401/code-review-harness" target="_blank" rel="noopener" class="btn-outline">View on GitHub</a>
+    </div>
+  </section>
+
+  <!-- Pipeline diagram -->
+  <section class="pipeline" id="how-it-works">
+    <div class="container">
+      <h2 class="section-title">How it works</h2>
+      <p class="section-sub">Agent = Model + Harness. The harness handles routing, skills, state, and output. The models do the thinking.</p>
+      <div class="pipeline-diagram">
+        <div class="pipe-step">
+          <div class="pipe-icon">&#x2194;</div>
+          <div class="pipe-label">git diff</div>
+        </div>
+        <div class="pipe-arrow">↓</div>
+        <div class="pipe-step highlight">
+          <div class="pipe-icon">&#x26A1;</div>
+          <div class="pipe-label">Router<br /><span class="pipe-sub">fast model — picks agents &amp; skills from DiffSummary</span></div>
+        </div>
+        <div class="pipe-arrow">↓</div>
+        <div class="pipe-agents">
+          <div class="pipe-agent agent-security">Security<br /><span>claude</span></div>
+          <div class="pipe-agent agent-perf">Performance<br /><span>gpt-4o</span></div>
+          <div class="pipe-agent agent-arch">Architecture<br /><span>gemini</span></div>
+          <div class="pipe-agent agent-correct">Correctness<br /><span>claude</span></div>
+          <div class="pipe-agent agent-test">Testing<br /><span>claude</span></div>
+        </div>
+        <div class="pipe-arrow">↓</div>
+        <div class="pipe-step">
+          <div class="pipe-icon">&#x1F4CB;</div>
+          <div class="pipe-label">Findings deduplicated &amp; sorted by severity</div>
+        </div>
+        <div class="pipe-arrow">↓</div>
+        <div class="pipe-formats">
+          <span class="fmt">pretty</span>
+          <span class="fmt">markdown</span>
+          <span class="fmt">json</span>
+          <span class="fmt">sarif</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Features -->
+  <section class="features">
+    <div class="container">
+      <div class="feature-grid">
+        <div class="feature-card">
+          <div class="feature-icon">&#x1F4C4;</div>
+          <h3>Agents are data files</h3>
+          <p>Each expert is a <code>.md</code> file with YAML frontmatter + system prompt. Drop one in <code>~/.crh/agents/</code> — no compilation, no restart.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">&#x26A1;</div>
+          <h3>Structured diff routing</h3>
+          <p>The router sees a compact <code>DiffSummary</code> (file list, languages, key tokens), not the raw diff — so routing stays fast and accurate on large PRs.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">&#x1F9E0;</div>
+          <h3>Skills loaded at runtime</h3>
+          <p>Agents see the full skill catalog as metadata and call <code>request_skill</code> mid-review to pull in checklists. They can also synthesize new ones on-the-fly.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">&#x1F3DB;</div>
+          <h3>Council mode</h3>
+          <p>Run one agent across multiple model families — independent review, peer critique, then synthesis with agreement scores. Disagreement is real signal.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">&#x1F4BE;</div>
+          <h3>Review history</h3>
+          <p>Every review is persisted to SQLite with FTS5. Full-text search across all past findings: <code>crh history --search "sql injection"</code></p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">&#x1F527;</div>
+          <h3>MCP server</h3>
+          <p>Run <code>crh serve --mcp</code> and wire it into Claude Code. Call <code>crh_review</code>, <code>crh_history</code>, and more directly as tools.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Terminal demo -->
+  <section class="demo">
+    <div class="container">
+      <h2 class="section-title">See it in action</h2>
+      <div class="terminal">
+        <div class="terminal-bar">
+          <span class="dot red"></span><span class="dot yellow"></span><span class="dot green"></span>
+          <span class="terminal-title">terminal</span>
+        </div>
+        <div class="terminal-body">
+          <div class="term-block">
+            <span class="prompt">$</span> <span class="cmd">crh review --level standard --format pretty</span>
+          </div>
+          <div class="term-output">
+            <div class="term-line dim">↳ Router selected: security, correctness (2 agents)</div>
+            <div class="term-line dim">↳ Running agents in parallel...</div>
+            <br />
+            <div class="term-line"><span class="badge critical">CRITICAL</span> <span class="finding-title">SQL Injection via raw query</span></div>
+            <div class="term-line dim">  src/db/users.ts:47 · security</div>
+            <div class="term-line dim">  Raw string interpolation in SELECT. Use parameterized queries.</div>
+            <br />
+            <div class="term-line"><span class="badge high">HIGH</span> <span class="finding-title">Unhandled promise rejection</span></div>
+            <div class="term-line dim">  src/api/handler.ts:112 · correctness</div>
+            <div class="term-line dim">  await without try/catch — will crash the process on failure.</div>
+            <br />
+            <div class="term-line"><span class="badge medium">MEDIUM</span> <span class="finding-title">N+1 query in user listing</span></div>
+            <div class="term-line dim">  src/services/users.ts:88 · correctness</div>
+          </div>
+          <br />
+          <div class="term-block">
+            <span class="prompt">$</span> <span class="cmd">crh council --agent security --models anthropic/claude-opus-4-5,openai/gpt-4o,google/gemini-2.5-pro</span>
+          </div>
+          <div class="term-output">
+            <div class="term-line dim">Stage 1/3 — Independent review (3 models in parallel)</div>
+            <div class="term-line dim">Stage 2/3 — Peer critique</div>
+            <div class="term-line dim">Stage 3/3 — Synthesis</div>
+            <br />
+            <div class="term-line"><span class="agreement">3/3 agree</span> <span class="finding-title">Missing rate limiting on auth endpoint</span></div>
+            <div class="term-line"><span class="agreement outlier">1/3</span> <span class="finding-title dim">Consider CSRF token rotation (outlier)</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Review levels -->
+  <section class="levels">
+    <div class="container">
+      <h2 class="section-title">Review levels</h2>
+      <div class="levels-table-wrap">
+        <table class="levels-table">
+          <thead>
+            <tr>
+              <th></th>
+              <th><code>quick</code></th>
+              <th><code>standard</code></th>
+              <th><code>deep</code></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td>Target latency</td><td>&lt; 30s</td><td>30s – 2min</td><td>2 – 10min</td></tr>
+            <tr><td>Max agents</td><td>2</td><td>5</td><td>all relevant</td></tr>
+            <tr><td>Ephemeral agents</td><td class="no">✗</td><td class="no">✗</td><td class="yes">✓</td></tr>
+            <tr><td>Fail threshold</td><td>critical</td><td>high</td><td>medium</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="levels-note">Exit code <code>0</code> = no findings above threshold. <code>1</code> = findings found. <code>2</code> = error. Override with <code>--fail-on</code>.</p>
+    </div>
+  </section>
+
+  <!-- Agents -->
+  <section class="agents-section" id="agents">
+    <div class="container">
+      <h2 class="section-title">Built-in agents</h2>
+      <p class="section-sub">Each agent's model can be overridden per-agent in <code>~/.crh/config.json</code>.</p>
+      <div class="agents-grid">
+        <div class="agent-card">
+          <div class="agent-name">security</div>
+          <div class="agent-model">claude-opus-4-5</div>
+          <div class="agent-focus">Auth, injection, OWASP, secrets exposure</div>
+        </div>
+        <div class="agent-card">
+          <div class="agent-name">performance</div>
+          <div class="agent-model">gpt-4o</div>
+          <div class="agent-focus">N+1 queries, O(n²) algorithms, memory leaks</div>
+        </div>
+        <div class="agent-card">
+          <div class="agent-name">architecture</div>
+          <div class="agent-model">gemini-2.5-pro</div>
+          <div class="agent-focus">SOLID, coupling, layering, design patterns</div>
+        </div>
+        <div class="agent-card">
+          <div class="agent-name">correctness</div>
+          <div class="agent-model">claude-opus-4-5</div>
+          <div class="agent-focus">Logic bugs, null deref, race conditions</div>
+        </div>
+        <div class="agent-card">
+          <div class="agent-name">testing</div>
+          <div class="agent-model">claude-opus-4-5</div>
+          <div class="agent-focus">Coverage gaps, bad mocks, brittle tests</div>
+        </div>
+        <div class="agent-card add-card">
+          <div class="agent-name">+ your own</div>
+          <div class="agent-focus">Drop a <code>.md</code> file in <code>~/.crh/agents/</code> — zero compilation needed</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Providers -->
+  <section class="providers-section" id="providers">
+    <div class="container">
+      <h2 class="section-title">Providers</h2>
+      <div class="providers-grid">
+        <div class="provider-card">
+          <div class="provider-name">OpenRouter</div>
+          <div class="provider-desc">HTTP API — access Claude, GPT-4o, Gemini, and 200+ models from one key</div>
+          <div class="provider-req"><code>OPENROUTER_API_KEY</code></div>
+        </div>
+        <div class="provider-card">
+          <div class="provider-name">Claude CLI</div>
+          <div class="provider-desc">Spawns your local <code>claude</code> process — no API key needed if you're already logged in</div>
+          <div class="provider-req">Claude Code installed</div>
+        </div>
+        <div class="provider-card">
+          <div class="provider-name">Codex CLI</div>
+          <div class="provider-desc">Spawns your local <code>codex</code> process for OpenAI models</div>
+          <div class="provider-req">Codex CLI installed</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Quick start -->
+  <section class="quickstart">
+    <div class="container">
+      <h2 class="section-title">Get started in 60 seconds</h2>
+      <div class="steps">
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-body">
+            <div class="step-title">Install</div>
+            <div class="code-block"><code>npm install -g review-harness</code></div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-body">
+            <div class="step-title">Configure your provider</div>
+            <div class="code-block"><code>crh init</code></div>
+            <div class="step-note">Interactive wizard — choose OpenRouter, Claude CLI, or Codex CLI</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">3</div>
+          <div class="step-body">
+            <div class="step-title">Review your last commit</div>
+            <div class="code-block"><code>crh review</code></div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">4</div>
+          <div class="step-body">
+            <div class="step-title">Or wire into GitHub Actions</div>
+            <div class="code-block"><code class="block">on:
+  pull_request:
+    types: [opened, synchronize]
+
+# Add OPENROUTER_API_KEY to repo secrets
+# A ready-to-use workflow is in .github/workflows/</code></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA -->
+  <section class="cta">
+    <div class="container">
+      <h2>Ready to ship with more confidence?</h2>
+      <p>Open source, MIT licensed. Works with any git repo.</p>
+      <div class="cta-actions">
+        <div class="install-block">
+          <code>npm install -g review-harness</code>
+          <button class="copy-btn" onclick="copyInstall(this)" title="Copy">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+          </button>
+        </div>
+        <a href="https://github.com/nayanraj210401/code-review-harness" target="_blank" rel="noopener" class="btn-outline">View on GitHub →</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer>
+    <div class="container">
+      <span>review-harness · MIT License · <a href="https://github.com/nayanraj210401/code-review-harness" target="_blank" rel="noopener">GitHub</a> · <a href="https://www.npmjs.com/package/review-harness" target="_blank" rel="noopener">npm</a></span>
+    </div>
+  </footer>
+
+  <script>
+    function copyInstall(btn) {
+      navigator.clipboard.writeText('npm install -g review-harness').then(() => {
+        btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>';
+        setTimeout(() => {
+          btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>';
+        }, 2000);
+      });
+    }
+  </script>
+</body>
+</html>
