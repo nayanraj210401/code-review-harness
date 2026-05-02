@@ -1,6 +1,6 @@
 {
   "name": "review-harness",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Multi-agent AI code review CLI — runs parallel expert agents across different model families to review your diffs",
   "keywords": [
     "code-review",
@@ -18,7 +18,7 @@
     "type": "git",
     "url": "https://github.com/nayanraj210401/code-review-harness.git"
   },
-  "homepage": "https://github.com/nayanraj210401/code-review-harness#readme",
+  "homepage": "https://nayanraj210401.github.io/code-review-harness/",
   "bugs": {
     "url": "https://github.com/nayanraj210401/code-review-harness/issues"
   },
