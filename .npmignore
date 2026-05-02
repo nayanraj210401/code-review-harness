@@ -1,0 +1,3 @@
+# Strip source maps — not needed by consumers
+dist/**/*.js.map
+dist/**/*.d.ts.map
