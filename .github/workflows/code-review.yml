@@ -1,0 +1,66 @@
+name: Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  review:
+    name: Multi-Agent Code Review
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build crh
+        run: npm run build
+
+      - name: Run tests
+        run: npm test
+
+      - name: Configure crh
+        run: |
+          mkdir -p ~/.crh
+          cat > ~/.crh/config.json << 'EOF'
+          {
+            "defaultProvider": "openrouter",
+            "defaultLevel": "standard",
+            "defaultFormat": "pretty",
+            "router": { "model": "openai/gpt-4o-mini", "enabled": true },
+            "providers": {
+              "openrouter": {
+                "id": "openrouter",
+                "defaultModel": "anthropic/claude-opus-4-5"
+              }
+            },
+            "councilMode": { "enabled": false }
+          }
+          EOF
+
+      - name: Run code review
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          node bin/crh.js review \
+            --diff-args "$BASE_SHA $HEAD_SHA" \
+            --level standard \
+            --format pretty \
+            --no-cache \
+            --fail-on high

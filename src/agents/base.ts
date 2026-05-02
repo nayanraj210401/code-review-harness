@@ -1,4 +1,3 @@
-import { z } from "zod";
 import type {
   AgentConfig,
   AgentInput,
@@ -14,24 +13,10 @@ import { getProviderForModel } from "../providers/registry";
 import { generateId } from "../utils/id";
 import { logger } from "../utils/logger";
 import { truncateToTokens } from "../utils/truncate";
+import { extractJsonFromContent } from "../utils/json-extractor";
+import { parseAgentResponse } from "../utils/parse-agent-response";
 
-const FindingSchema = z.object({
-  severity: z.enum(["critical", "high", "medium", "low", "info"]),
-  category: z.string(),
-  title: z.string(),
-  description: z.string(),
-  suggestion: z.string(),
-  filePath: z.string().optional(),
-  lineStart: z.number().int().optional(),
-  lineEnd: z.number().int().optional(),
-  confidence: z.number().min(0).max(1).optional(),
-  skillId: z.string().optional(),
-});
-
-const ResponseSchema = z.object({
-  findings: z.array(FindingSchema),
-  summary: z.string(),
-});
+export { extractJsonFromContent };
 
 export class BaseAgent implements IAgent {
   constructor(readonly config: AgentConfig) {}
@@ -144,7 +129,7 @@ export class BaseAgent implements IAgent {
         ];
       }
 
-      const { findings, summary, tokensUsed } = this.parseResponse(finalContent, input);
+      const { findings, summary, tokensUsed, error } = this.parseResponse(finalContent, input);
 
       return {
         agentId: this.config.id,
@@ -155,6 +140,7 @@ export class BaseAgent implements IAgent {
         tokensUsed,
         durationMs: Date.now() - start,
         toolCallsIssued,
+        error,
       };
     } catch (err) {
       logger.error(`Agent ${this.config.id} failed: ${err}`);
@@ -255,33 +241,26 @@ export class BaseAgent implements IAgent {
   private parseResponse(
     content: string,
     input: AgentInput,
-  ): { findings: Finding[]; summary: string; tokensUsed: number } {
-    const jsonMatch =
-      content.match(/```(?:json)?\s*([\s\S]*?)```/) ??
-      content.match(/(\{[\s\S]*\})/);
+  ): { findings: Finding[]; summary: string; tokensUsed: number; error?: string } {
+    const { findings: raw, summary, error } = parseAgentResponse(content);
 
-    if (!jsonMatch) {
-      logger.warn(`[${this.config.id}] no JSON found in response`);
-      return { findings: [], summary: content.slice(0, 200), tokensUsed: 0 };
+    if (error) {
+      logger.warn(`[${this.config.id}] ${error}`);
+      return { findings: [], summary, tokensUsed: 0, error };
     }
 
-    try {
-      const parsed = ResponseSchema.parse(JSON.parse(jsonMatch[1]));
-      const findings: Finding[] = parsed.findings.map((f) => ({
-        ...f,
-        id: generateId(),
-        agentId: this.config.id,
-        confidence: f.confidence ?? 1.0,
-      }));
-      return {
-        findings,
-        summary: parsed.summary,
-        tokensUsed: estimateTokens(content) + estimateTokens(input.context.diff ?? ""),
-      };
-    } catch (err) {
-      logger.warn(`[${this.config.id}] failed to parse JSON response: ${err}`);
-      return { findings: [], summary: "", tokensUsed: 0 };
-    }
+    const findings: Finding[] = raw.map((f) => ({
+      ...f,
+      id: generateId(),
+      agentId: this.config.id,
+      confidence: f.confidence ?? 1.0,
+    }));
+
+    return {
+      findings,
+      summary,
+      tokensUsed: estimateTokens(content) + estimateTokens(input.context.diff ?? ""),
+    };
   }
 }
 

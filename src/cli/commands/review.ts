@@ -11,6 +11,9 @@ import {
   failSpinner,
 } from "../ui/spinner";
 import { logger } from "../../utils/logger";
+import { computeExitCode, resolveReviewExitCode } from "../../utils/exit-code";
+
+export { computeExitCode, resolveReviewExitCode };
 
 export function registerReviewCommand(program: Command): void {
   program
@@ -114,10 +117,14 @@ export function registerReviewCommand(program: Command): void {
           process.stdout.write(output + "\n");
         }
 
-        const exitCode = computeExitCode(
-          session.findings,
-          opts.failOn ?? "high",
-        );
+        const agentErrors = session.agentResults.filter((r) => r.error).length;
+        if (agentErrors > 0) {
+          const total = session.agentResults.length;
+          console.error(`\n⚠  ${agentErrors}/${total} agent(s) failed to produce results — review may be incomplete.`);
+          logger.debug(`[review] agent errors: ${session.agentResults.filter((r) => r.error).map((r) => `${r.agentId}: ${r.error}`).join("; ")}`);
+        }
+
+        const exitCode = resolveReviewExitCode(session.agentResults, session.findings, opts.failOn ?? "high");
         process.exit(exitCode);
       } catch (err) {
         failSpinner(`Review failed: ${err}`);
@@ -145,16 +152,3 @@ function readStdinIfPiped(): string | undefined {
   }
 }
 
-function computeExitCode(
-  findings: import("../../types/agent").Finding[],
-  failOn: string,
-): number {
-  const severityOrder = ["info", "low", "medium", "high", "critical"];
-  const threshold = severityOrder.indexOf(failOn);
-  if (threshold === -1) return 0;
-
-  const hasIssue = findings.some(
-    (f) => severityOrder.indexOf(f.severity) >= threshold,
-  );
-  return hasIssue ? 1 : 0;
-}
