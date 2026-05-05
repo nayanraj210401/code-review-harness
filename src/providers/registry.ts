@@ -3,6 +3,7 @@ import type { CRHConfig } from "../types/config";
 import { OpenRouterProvider } from "./openrouter";
 import { ClaudeCliProvider } from "./claude-cli";
 import { CodexCliProvider } from "./codex-cli";
+import { CursorCliProvider } from "./cursor-cli";
 
 const _providers = new Map<string, IProvider>();
 let _defaultProviderId = "openrouter";
@@ -21,6 +22,9 @@ export function initProviders(config: CRHConfig): void {
         break;
       case "codex-cli":
         _providers.set(id, new CodexCliProvider(providerConfig));
+        break;
+      case "cursor-cli":
+        _providers.set(id, new CursorCliProvider(providerConfig));
         break;
     }
   }
@@ -49,6 +53,9 @@ export function getProviderForModel(model: string): IProvider {
   }
   if (model.startsWith("codex-cli/") && _providers.has("codex-cli")) {
     return _providers.get("codex-cli")!;
+  }
+  if (model.startsWith("cursor-cli/") && _providers.has("cursor-cli")) {
+    return _providers.get("cursor-cli")!;
   }
   if (model.startsWith("openrouter/") && _providers.has("openrouter")) {
     return _providers.get("openrouter")!;
