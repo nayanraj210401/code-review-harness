@@ -24,25 +24,30 @@ interface CliDetection {
   claudeVersion: string;
   codexFound: boolean;
   codexVersion: string;
+  cursorFound: boolean;
+  cursorVersion: string;
   openrouterKeySet: boolean;
 }
 
 async function detectAvailableProviders(): Promise<CliDetection> {
-  const [claude, codex] = await Promise.all([
+  const [claude, codex, cursor] = await Promise.all([
     execFileAsync("claude", ["--version"]).then((r) => r.stdout.trim()).catch(() => ""),
     execFileAsync("codex", ["--version"]).then((r) => r.stdout.trim()).catch(() => ""),
+    execFileAsync("cursor", ["--version"]).then((r) => r.stdout.trim()).catch(() => ""),
   ]);
   return {
     claudeFound: claude.length > 0,
     claudeVersion: claude,
     codexFound: codex.length > 0,
     codexVersion: codex,
+    cursorFound: cursor.length > 0,
+    cursorVersion: cursor,
     openrouterKeySet: !!process.env.OPENROUTER_API_KEY,
   };
 }
 
 interface WizardAnswers {
-  setupMode: "both-clis" | "claude-cli" | "codex-cli" | "openrouter" | "skip";
+  setupMode: "all-clis" | "both-clis" | "claude-cli" | "codex-cli" | "cursor-cli" | "openrouter" | "skip";
   apiKey?: string;
   defaultLevel: "quick" | "standard" | "deep";
   councilEnabled: boolean;
@@ -96,6 +101,11 @@ export async function runInit(options: {
   } else {
     console.log(chalk.gray("  ✗ codex CLI   not found"));
   }
+  if (detected.cursorFound) {
+    console.log(chalk.green(`  ✔ cursor CLI  ${detected.cursorVersion}`));
+  } else {
+    console.log(chalk.gray("  ✗ cursor CLI  not found"));
+  }
   if (detected.openrouterKeySet) {
     console.log(chalk.green("  ✔ OPENROUTER_API_KEY set"));
   } else {
@@ -103,10 +113,11 @@ export async function runInit(options: {
   }
   console.log();
 
-  if (detected.claudeFound && detected.codexFound) {
+  const cliCount = [detected.claudeFound, detected.codexFound, detected.cursorFound].filter(Boolean).length;
+  if (cliCount >= 2) {
     console.log(
       chalk.cyan(
-        "  Both CLIs detected — you can run multi-model council reviews with zero API keys!\n",
+        "  Multiple CLIs detected — you can run multi-model council reviews with zero API keys!\n",
       ),
     );
   }
@@ -133,7 +144,7 @@ export async function runInit(options: {
 
   console.log(chalk.green(`✔ Directories ready`));
 
-  if (answers.setupMode === "both-clis") {
+  if (answers.setupMode === "both-clis" || answers.setupMode === "all-clis") {
     console.log(
       chalk.cyan(
         "\n  Council mode ready! Try:\n" +
@@ -184,9 +195,16 @@ async function askQuestions(
   // Build provider choices based on what's available
   const choices: Array<{ name: string; value: string }> = [];
 
+  const detectedClis = [detected.claudeFound, detected.codexFound, detected.cursorFound].filter(Boolean).length;
+  if (detectedClis >= 3) {
+    choices.push({
+      name: chalk.green("All CLIs (recommended — zero API key, maximum model diversity)"),
+      value: "all-clis",
+    });
+  }
   if (detected.claudeFound && detected.codexFound) {
     choices.push({
-      name: chalk.green("Both CLIs (recommended — zero API key, multi-model council ready)"),
+      name: chalk.green("Claude + Codex CLIs (zero API key, multi-model council ready)"),
       value: "both-clis",
     });
   }
@@ -200,6 +218,12 @@ async function askQuestions(
     choices.push({
       name: `Codex CLI   (${detected.codexVersion || "installed"}) — no API key needed`,
       value: "codex-cli",
+    });
+  }
+  if (detected.cursorFound) {
+    choices.push({
+      name: `Cursor CLI  (${detected.cursorVersion || "installed"}) — no API key needed`,
+      value: "cursor-cli",
     });
   }
   choices.push({
@@ -238,7 +262,7 @@ async function askQuestions(
       setupMode,
       apiKey,
       defaultLevel: "standard",
-      councilEnabled: setupMode === "both-clis",
+      councilEnabled: setupMode === "both-clis" || setupMode === "all-clis",
       enabledAgents: Object.keys(DEFAULT_CONFIG.agents).filter(
         (id) => DEFAULT_CONFIG.agents[id]?.enabled,
       ),
@@ -258,7 +282,7 @@ async function askQuestions(
     },
   ]);
 
-  const councilDefault = setupMode === "both-clis";
+  const councilDefault = setupMode === "both-clis" || setupMode === "all-clis";
   const { councilEnabled } = await inquirer.prompt([
     {
       type: "confirm",
@@ -324,6 +348,25 @@ function buildConfig(answers: WizardAnswers, detected: CliDetection): CRHConfig 
       config.router.model = "codex-cli/gpt-4.1-mini";
       config.councilMode.defaultModels = ["codex-cli/o4-mini", "codex-cli/gpt-4.1"];
       config.councilMode.chairModel = "codex-cli/o4-mini";
+      break;
+
+    case "cursor-cli":
+      config.defaultProvider = "cursor-cli";
+      config.providers["cursor-cli"] = { id: "cursor-cli", defaultModel: "cursor-cli/gpt-4o" };
+      config.router.model = "cursor-cli/gpt-4o";
+      config.councilMode.defaultModels = ["cursor-cli/claude-3-5-sonnet", "cursor-cli/gpt-4o"];
+      config.councilMode.chairModel = "cursor-cli/claude-3-5-sonnet";
+      break;
+
+    case "all-clis":
+      config.defaultProvider = "claude-cli";
+      config.providers["claude-cli"] = { id: "claude-cli", defaultModel: "claude-cli/claude-opus-4-5" };
+      config.providers["codex-cli"] = { id: "codex-cli", defaultModel: "codex-cli/o4-mini" };
+      config.providers["cursor-cli"] = { id: "cursor-cli", defaultModel: "cursor-cli/gpt-4o" };
+      config.router.model = "claude-cli/claude-haiku-4-5";
+      config.councilMode.defaultAgent = "security";
+      config.councilMode.defaultModels = ["claude-cli/claude-opus-4-5", "codex-cli/gpt-4o", "cursor-cli/gemini-2.5-pro"];
+      config.councilMode.chairModel = "claude-cli/claude-opus-4-5";
       break;
 
     case "openrouter":
