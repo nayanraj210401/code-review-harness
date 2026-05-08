@@ -8,6 +8,7 @@ import { registerServeCommand } from "./commands/serve";
 import { registerAgentsCommand } from "./commands/agents";
 import { registerSkillsCommand } from "./commands/skills";
 import { registerHistoryCommand } from "./commands/history";
+import { registerUpdateCommand } from "./commands/update";
 import { runInit } from "./commands/init";
 
 // Auto-trigger init on first run
@@ -19,7 +20,7 @@ async function main(): Promise<void> {
   program
     .name("crh")
     .description("Code Review Harness — multi-agent AI code review CLI")
-    .version("0.1.0")
+    .version("0.2.0")
     .option("--no-color", "Disable color output");
 
   // Auto-init only for commands that require a provider (review, council)
@@ -36,6 +37,7 @@ async function main(): Promise<void> {
   registerAgentsCommand(program);
   registerSkillsCommand(program);
   registerHistoryCommand(program);
+  registerUpdateCommand(program);
 
   program
     .command("init")
