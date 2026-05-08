@@ -1,6 +1,6 @@
 {
   "name": "review-harness",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Multi-agent AI code review CLI — runs parallel expert agents across different model families to review your diffs",
   "keywords": [
     "code-review",
